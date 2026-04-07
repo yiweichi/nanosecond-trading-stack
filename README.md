@@ -19,36 +19,71 @@ UDP Market Data → OrderBook → Strategy → OMS → Mock Exchange → Ack →
 See [PLAN.md](PLAN.md) for detailed architecture, design decisions, and
 optimization roadmap.
 
-## Build
+## Prerequisites
+
+- C++17 compiler (Clang or GCC)
+- CMake ≥ 3.16
+- Make (or Ninja)
+
+## Quick Start
 
 ```bash
-mkdir build && cd build
-cmake .. -DCMAKE_BUILD_TYPE=Debug
-make -j
+make              # Debug build
+make release      # Release build (-O2)
+make bench        # Release build + run benchmark
+make clean        # Remove build directory
 ```
 
 ## Run
 
 ```bash
 # Self-contained benchmark (no network, synthetic data)
-./pipeline_bench 100000 10000
+make bench
+make bench BENCH_ITERS=500000 BENCH_WARM=50000   # custom iterations
 
-# Full pipeline with UDP market data
-./md_generator 12345 1000 &    # terminal 1: send fake market data
-./nts_pipeline 12345 10        # terminal 2: run pipeline for 10 seconds
+# Full pipeline with UDP market data (two terminals)
+make gen          # Terminal 1: send fake market data
+make run          # Terminal 2: run pipeline for 10 seconds
+
+# Custom port / duration / rate
+make gen PORT=9999 RATE=5000
+make run PORT=9999 DURATION=30
 ```
 
 ## Latency Instrumentation
 
 Every pipeline iteration records nanosecond timestamps at each hop:
 
-- `RecvStart` → `RecvDone` → `BookUpdated` → `StrategyDone` → `OrderSent`
-- `AckReceived` → `AckProcessed`
+```
+RecvStart → RecvDone → BookUpdated → StrategyDone → OrderSent → AckReceived → AckProcessed
+```
 
-The report shows P50/P90/P99/P99.9/Max for each segment and end-to-end.
+The report shows per-hop and end-to-end latency distributions
+(P50 / P90 / P99 / P99.9 / Max) in nanoseconds.
 
-Tracing can be fully disabled at compile time (`-DNTS_ENABLE_TRACING=OFF`)
-with zero runtime overhead.
+Production-grade tracer design:
+- All hot-path functions are header-inline (zero function-call overhead)
+- Stores raw hardware ticks; converts to nanoseconds on the cold path
+- Ring buffer — overwrites oldest traces instead of dropping new ones
+- `alignas(64)` ensures each trace record fits one cache line
+- Branch hints (`__builtin_expect`) for predictable hot-path branching
+
+Tracing can be fully disabled at compile time with zero runtime overhead:
+
+```bash
+cmake .. -DNTS_ENABLE_TRACING=OFF
+```
+
+## Matching Engine (Rust)
+
+The `matching-engine/` submodule is a standalone Rust order-matching engine
+with its own benchmarks. Initialize and build it separately:
+
+```bash
+git submodule update --init --recursive
+cd matching-engine
+cargo run --release
+```
 
 ## License
 
