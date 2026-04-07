@@ -109,7 +109,11 @@ void StatsCalculator::print_report(const HopTracer& tracer, FILE* out) {
     fprintf(out, "              NANOSECOND TRADING STACK — LATENCY REPORT\n");
     fprintf(out, "===============================================================================\n\n");
 
-    fprintf(out, "  Traces recorded: %zu / %zu\n\n", tracer.count(), tracer.capacity());
+    fprintf(out, "  Traces recorded: %zu / %zu", tracer.count(), tracer.capacity());
+    if (tracer.wrapped()) {
+        fprintf(out, "  (ring buffer wrapped, %zu total traces)", tracer.total_traces());
+    }
+    fprintf(out, "\n\n");
 
     // Count traces with specific characteristics
     size_t with_data = 0, with_orders = 0, with_acks = 0;
