@@ -1,8 +1,8 @@
 #include "nts/instrument/stats.h"
 
 #include <algorithm>
-#include <cmath>
 #include <cinttypes>
+#include <cmath>
 #include <numeric>
 
 namespace nts::instrument {
@@ -11,21 +11,21 @@ namespace nts::instrument {
 
 const std::vector<Segment>& StatsCalculator::per_hop_segments() {
     static const std::vector<Segment> segs = {
-        {Hop::RecvStart,    Hop::RecvDone,     "RecvStart -> RecvDone"},
-        {Hop::RecvDone,     Hop::BookUpdated,  "RecvDone -> BookUpdated"},
-        {Hop::BookUpdated,  Hop::StrategyDone, "BookUpdated -> StrategyDone"},
-        {Hop::StrategyDone, Hop::OrderSent,    "StrategyDone -> OrderSent"},
-        {Hop::OrderSent,    Hop::AckReceived,  "OrderSent -> AckReceived"},
-        {Hop::AckReceived,  Hop::AckProcessed, "AckReceived -> AckProcessed"},
+        {Hop::RecvStart, Hop::RecvDone, "RecvStart -> RecvDone"},
+        {Hop::RecvDone, Hop::BookUpdated, "RecvDone -> BookUpdated"},
+        {Hop::BookUpdated, Hop::StrategyDone, "BookUpdated -> StrategyDone"},
+        {Hop::StrategyDone, Hop::OrderSent, "StrategyDone -> OrderSent"},
+        {Hop::OrderSent, Hop::AckReceived, "OrderSent -> AckReceived"},
+        {Hop::AckReceived, Hop::AckProcessed, "AckReceived -> AckProcessed"},
     };
     return segs;
 }
 
 const std::vector<Segment>& StatsCalculator::end_to_end_segments() {
     static const std::vector<Segment> segs = {
-        {Hop::RecvDone,  Hop::StrategyDone, "RecvDone -> StrategyDone (core)"},
-        {Hop::RecvDone,  Hop::OrderSent,    "RecvDone -> OrderSent (tick-to-order)"},
-        {Hop::RecvStart, Hop::OrderSent,    "RecvStart -> OrderSent (tick-to-trade)"},
+        {Hop::RecvDone, Hop::StrategyDone, "RecvDone -> StrategyDone (core)"},
+        {Hop::RecvDone, Hop::OrderSent, "RecvDone -> OrderSent (tick-to-order)"},
+        {Hop::RecvStart, Hop::OrderSent, "RecvStart -> OrderSent (tick-to-trade)"},
         {Hop::OrderSent, Hop::AckProcessed, "OrderSent -> AckProcessed (exchange RT)"},
     };
     return segs;
@@ -52,7 +52,7 @@ LatencyStats StatsCalculator::compute(const HopTracer& tracer, Hop from, Hop to)
     std::sort(latencies.begin(), latencies.end());
 
     auto percentile = [&](double p) -> uint64_t {
-        size_t idx = static_cast<size_t>(p * static_cast<double>(latencies.size() - 1));
+        auto idx = static_cast<size_t>(p * static_cast<double>(latencies.size() - 1));
         return latencies[idx];
     };
 
@@ -67,7 +67,7 @@ LatencyStats StatsCalculator::compute(const HopTracer& tracer, Hop from, Hop to)
 
     double sum = 0.0;
     for (auto v : latencies) sum += static_cast<double>(v);
-    double mean = sum / static_cast<double>(latencies.size());
+    double mean   = sum / static_cast<double>(latencies.size());
     stats.mean_ns = static_cast<uint64_t>(mean);
 
     double sq_sum = 0.0;
@@ -83,8 +83,8 @@ LatencyStats StatsCalculator::compute(const HopTracer& tracer, Hop from, Hop to)
 // ── Report printing ─────────────────────────────────────────────────────────
 
 static void print_header(FILE* out) {
-    fprintf(out, "  %-42s %8s %8s %8s %8s %8s %8s %8s %8s %10s\n",
-            "Segment", "Samples", "Min", "P50", "P90", "P99", "P99.9", "Max", "Mean", "StdDev");
+    fprintf(out, "  %-42s %8s %8s %8s %8s %8s %8s %8s %8s %10s\n", "Segment", "Samples", "Min",
+            "P50", "P90", "P99", "P99.9", "Max", "Mean", "StdDev");
     fprintf(out, "  ");
     for (int i = 0; i < 120; i++) fputc('-', out);
     fputc('\n', out);
@@ -95,19 +95,20 @@ static void print_stats_line(const char* name, const LatencyStats& stats, FILE* 
         fprintf(out, "  %-42s %8s\n", name, "(no data)");
         return;
     }
-    fprintf(out, "  %-42s %8zu %8" PRIu64 " %8" PRIu64 " %8" PRIu64 " %8" PRIu64
-                 " %8" PRIu64 " %8" PRIu64 " %8" PRIu64 " %10.1f\n",
-            name,
-            stats.samples,
-            stats.min_ns, stats.p50_ns, stats.p90_ns, stats.p99_ns, stats.p999_ns,
-            stats.max_ns, stats.mean_ns, stats.stddev_ns);
+    fprintf(out,
+            "  %-42s %8zu %8" PRIu64 " %8" PRIu64 " %8" PRIu64 " %8" PRIu64 " %8" PRIu64
+            " %8" PRIu64 " %8" PRIu64 " %10.1f\n",
+            name, stats.samples, stats.min_ns, stats.p50_ns, stats.p90_ns, stats.p99_ns,
+            stats.p999_ns, stats.max_ns, stats.mean_ns, stats.stddev_ns);
 }
 
 void StatsCalculator::print_report(const HopTracer& tracer, FILE* out) {
     fprintf(out, "\n");
-    fprintf(out, "===============================================================================\n");
+    fprintf(out,
+            "===============================================================================\n");
     fprintf(out, "              NANOSECOND TRADING STACK — LATENCY REPORT\n");
-    fprintf(out, "===============================================================================\n\n");
+    fprintf(out,
+            "===============================================================================\n\n");
 
     fprintf(out, "  Traces recorded: %zu / %zu", tracer.count(), tracer.capacity());
     if (tracer.wrapped()) {
@@ -119,8 +120,8 @@ void StatsCalculator::print_report(const HopTracer& tracer, FILE* out) {
     size_t with_data = 0, with_orders = 0, with_acks = 0;
     for (size_t i = 0; i < tracer.count(); i++) {
         const auto& t = tracer.trace(i);
-        if (t.has(Hop::RecvDone))     with_data++;
-        if (t.has(Hop::OrderSent))    with_orders++;
+        if (t.has(Hop::RecvDone)) with_data++;
+        if (t.has(Hop::OrderSent)) with_orders++;
         if (t.has(Hop::AckProcessed)) with_acks++;
     }
     fprintf(out, "  Traces with market data:  %zu\n", with_data);
@@ -144,7 +145,9 @@ void StatsCalculator::print_report(const HopTracer& tracer, FILE* out) {
         print_stats_line(seg.name, stats, out);
     }
 
-    fprintf(out, "\n===============================================================================\n\n");
+    fprintf(
+        out,
+        "\n===============================================================================\n\n");
 }
 
-} // namespace nts::instrument
+}  // namespace nts::instrument

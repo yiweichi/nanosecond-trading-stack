@@ -1,32 +1,36 @@
+#include "nts/exchange.h"
+#include "nts/instrument/clock.h"
+#include "nts/instrument/stats.h"
+#include "nts/instrument/tracer.h"
 #include "nts/market_data.h"
+#include "nts/oms.h"
 #include "nts/orderbook.h"
 #include "nts/strategy.h"
-#include "nts/oms.h"
-#include "nts/exchange.h"
-#include "nts/instrument/tracer.h"
-#include "nts/instrument/stats.h"
-#include "nts/instrument/clock.h"
 
 #include <cstdio>
 #include <cstdlib>
-#include <cmath>
+#include <cstring>
+#include <ctime>
 #include <random>
+#include <string>
+#include <sys/stat.h>
 
-static nts::MdMsg make_md(double& price, uint32_t& seq,
-                          std::mt19937& rng,
-                          std::normal_distribution<double>& price_step,
-                          std::uniform_int_distribution<uint32_t>& size_dist) {
+static nts::MdQuote make_quote(double& price, uint32_t& seq, std::mt19937& rng,
+                               std::normal_distribution<double>&        price_step,
+                               std::uniform_int_distribution<uint32_t>& size_dist) {
     price += price_step(rng);
 
-    nts::MdMsg msg;
-    msg.timestamp_ns  = nts::instrument::now_ns();
-    msg.instrument_id = nts::DEFAULT_INSTRUMENT;
-    msg.sequence_num  = seq++;
-    msg.bid_price     = price - 0.01;
-    msg.ask_price     = price + 0.01;
-    msg.bid_size      = size_dist(rng);
-    msg.ask_size      = size_dist(rng);
-    return msg;
+    nts::MdQuote q;
+    std::memset(&q, 0, sizeof(q));
+    q.header.timestamp_ns  = nts::instrument::now_ns();
+    q.header.instrument_id = nts::DEFAULT_INSTRUMENT;
+    q.header.sequence_num  = seq++;
+    q.header.type          = nts::MdMsgType::Quote;
+    q.bid_price            = price - 0.01;
+    q.ask_price            = price + 0.01;
+    q.bid_size             = size_dist(rng);
+    q.ask_size             = size_dist(rng);
+    return q;
 }
 
 struct PipelineState {
@@ -35,73 +39,58 @@ struct PipelineState {
     nts::OMS               oms;
     nts::MockExchange      exchange;
 
-    explicit PipelineState(const nts::StrategyParams& params)
-        : strategy(params) {}
+    explicit PipelineState(const nts::StrategyParams& params) : strategy(params) {}
 };
 
-static void run_pipeline_step(PipelineState& state, const nts::MdMsg& msg) {
-    state.book.update(msg);
+static void run_step(PipelineState& st, const nts::MdQuote& q) {
+    st.book.on_quote(q);
 
-    nts::Signal sig = state.strategy.on_book_update(state.book);
+    if (st.book.valid()) st.oms.set_reference_price(st.book.mid_price());
 
-    if (sig != nts::Signal::None) {
-        nts::Side side = (sig == nts::Signal::Buy)
-                             ? nts::Side::Buy : nts::Side::Sell;
-        double price = (side == nts::Side::Buy)
-                           ? state.book.ask_price : state.book.bid_price;
+    nts::Signal sig = st.strategy.on_book_update(st.book);
 
-        if (std::abs(state.oms.position()) < nts::MAX_POSITION) {
-            const nts::Order* order =
-                state.oms.create_order(side, price, nts::DEFAULT_ORDER_SIZE);
-            if (order) {
-                state.exchange.submit_order(*order);
-            }
-        }
+    if (sig != nts::Signal::None && st.book.valid()) {
+        nts::Side  side  = (sig == nts::Signal::Buy) ? nts::Side::Buy : nts::Side::Sell;
+        nts::Price price = (side == nts::Side::Buy) ? st.book.best_ask() : st.book.best_bid();
+
+        nts::Order* order = st.oms.send_new(side, price, nts::DEFAULT_ORDER_SIZE);
+        if (order != nullptr) st.exchange.submit_order(*order);
     }
 
-    nts::Ack ack;
-    if (state.exchange.poll_ack(ack)) {
-        state.oms.on_ack(ack);
+    nts::ExecutionReport exec;
+    while (st.exchange.poll_execution(exec)) {
+        st.oms.on_execution(exec);
     }
 }
 
-// Traced version: identical logic, but with tracer calls inserted.
-// Kept as a separate function so the untraced warmup path has zero
-// measurement overhead — no pointer checks, no dead branches.
-static void run_pipeline_step_traced(PipelineState& state,
-                                      const nts::MdMsg& msg,
-                                      nts::instrument::HopTracer& tracer) {
+static void run_step_traced(PipelineState& st, const nts::MdQuote& q,
+                            nts::instrument::HopTracer& tracer) {
     using nts::instrument::Hop;
 
     tracer.start_trace();
     tracer.record(Hop::RecvDone);
 
-    state.book.update(msg);
+    st.book.on_quote(q);
     tracer.record(Hop::BookUpdated);
 
-    nts::Signal sig = state.strategy.on_book_update(state.book);
+    if (st.book.valid()) st.oms.set_reference_price(st.book.mid_price());
+
+    nts::Signal sig = st.strategy.on_book_update(st.book);
     tracer.record(Hop::StrategyDone);
 
-    if (sig != nts::Signal::None) {
-        nts::Side side = (sig == nts::Signal::Buy)
-                             ? nts::Side::Buy : nts::Side::Sell;
-        double price = (side == nts::Side::Buy)
-                           ? state.book.ask_price : state.book.bid_price;
+    if (sig != nts::Signal::None && st.book.valid()) {
+        nts::Side  side  = (sig == nts::Signal::Buy) ? nts::Side::Buy : nts::Side::Sell;
+        nts::Price price = (side == nts::Side::Buy) ? st.book.best_ask() : st.book.best_bid();
 
-        if (std::abs(state.oms.position()) < nts::MAX_POSITION) {
-            const nts::Order* order =
-                state.oms.create_order(side, price, nts::DEFAULT_ORDER_SIZE);
-            if (order) {
-                state.exchange.submit_order(*order);
-            }
-        }
+        nts::Order* order = st.oms.send_new(side, price, nts::DEFAULT_ORDER_SIZE);
+        if (order != nullptr) st.exchange.submit_order(*order);
         tracer.record(Hop::OrderSent);
     }
 
-    nts::Ack ack;
-    if (state.exchange.poll_ack(ack)) {
+    nts::ExecutionReport exec;
+    while (st.exchange.poll_execution(exec)) {
         tracer.record(Hop::AckReceived);
-        state.oms.on_ack(ack);
+        st.oms.on_execution(exec);
         tracer.record(Hop::AckProcessed);
     }
 
@@ -113,45 +102,99 @@ int main(int argc, char* argv[]) {
     size_t warmup     = 10'000;
 
     if (argc > 1) iterations = static_cast<size_t>(std::stoul(argv[1]));
-    if (argc > 2) warmup     = static_cast<size_t>(std::stoul(argv[2]));
+    if (argc > 2) warmup = static_cast<size_t>(std::stoul(argv[2]));
 
     fprintf(stderr, "[bench] iterations=%zu, warmup=%zu\n", iterations, warmup);
 
-    PipelineState state(nts::StrategyParams{});
+    PipelineState              state(nts::StrategyParams{});
     nts::instrument::HopTracer tracer(iterations);
 
-    std::mt19937 rng(42);
+    std::mt19937                            rng(42);
     std::normal_distribution<double>        price_step(0.0, 0.01);
     std::uniform_int_distribution<uint32_t> size_dist(100, 1000);
-    double   price = 100.0;
-    uint32_t seq   = 0;
+    double                                  price = 100.0;
+    uint32_t                                seq   = 0;
 
-    // ── Warmup (no tracing, no pointer checks — clean code path) ────────
     for (size_t i = 0; i < warmup; i++) {
-        nts::MdMsg msg = make_md(price, seq, rng, price_step, size_dist);
-        run_pipeline_step(state, msg);
+        nts::MdQuote q = make_quote(price, seq, rng, price_step, size_dist);
+        run_step(state, q);
     }
 
-    // Reset state after warmup
     state = PipelineState(nts::StrategyParams{});
 
-    // ── Benchmark (with tracing) ────────────────────────────────────────
     uint64_t bench_start = nts::instrument::now_ns();
 
     for (size_t i = 0; i < iterations; i++) {
-        nts::MdMsg msg = make_md(price, seq, rng, price_step, size_dist);
-        run_pipeline_step_traced(state, msg, tracer);
+        nts::MdQuote q = make_quote(price, seq, rng, price_step, size_dist);
+        run_step_traced(state, q, tracer);
     }
 
-    uint64_t bench_end = nts::instrument::now_ns();
-    double elapsed_ms = static_cast<double>(bench_end - bench_start) / 1'000'000.0;
+    uint64_t bench_end  = nts::instrument::now_ns();
+    double   elapsed_ms = static_cast<double>(bench_end - bench_start) / 1'000'000.0;
 
-    fprintf(stderr, "[bench] completed in %.2f ms (%.0f ns/iteration avg)\n",
-            elapsed_ms, (elapsed_ms * 1'000'000.0) / static_cast<double>(iterations));
-    fprintf(stderr, "[bench] orders: %zu total, %zu filled, position: %d\n",
-            state.oms.total_orders(), state.oms.filled_count(), state.oms.position());
+    fprintf(stderr, "\n[bench] completed in %.2f ms (%.0f ns/iteration avg)\n", elapsed_ms,
+            (elapsed_ms * 1'000'000.0) / static_cast<double>(iterations));
+    fprintf(stderr, "[bench] orders: %zu total, %zu filled, %zu cancelled, %zu rejected\n",
+            state.oms.total_orders(), state.oms.total_fills(), state.oms.total_cancels(),
+            state.oms.total_rejects());
+    fprintf(stderr, "[bench] position: %d, realized PnL: %.4f, total PnL: %.4f\n",
+            state.oms.net_position(), state.oms.realized_pnl(),
+            state.oms.total_pnl(state.book.mid_price()));
 
     nts::instrument::StatsCalculator::print_report(tracer);
+
+    // Save results to file
+    {
+#if defined(__APPLE__)
+        const char* dir = "results/pipeline/mac";
+#elif defined(__linux__)
+        const char* dir = "results/pipeline/linux";
+#else
+        const char* dir = "results/pipeline/other";
+#endif
+        std::string dir_str = dir;
+        std::string partial;
+        for (char c : dir_str) {
+            partial += c;
+            if (c == '/') mkdir(partial.c_str(), 0755);
+        }
+        mkdir(dir, 0755);
+
+        time_t    now = time(nullptr);
+        struct tm t;
+        gmtime_r(&now, &t);
+        char ts[32];
+        snprintf(ts, sizeof(ts), "%04d%02d%02dT%02d%02d%02d", t.tm_year + 1900, t.tm_mon + 1,
+                 t.tm_mday, t.tm_hour, t.tm_min, t.tm_sec);
+
+        std::string path = std::string(dir) + "/" + ts + ".txt";
+        FILE*       f = fopen(path.c_str(), "w");
+        if (f != nullptr) {
+            fprintf(f, "=== Pipeline Latency Benchmark (C++) ===\n");
+            char hash[64] = "";
+            FILE* p = popen("git rev-parse --short HEAD 2>/dev/null", "r");
+            if (p != nullptr) {
+                if (fgets(hash, sizeof(hash), p) != nullptr) {
+                    size_t len = strlen(hash);
+                    if (len > 0 && hash[len - 1] == '\n') hash[len - 1] = '\0';
+                }
+                pclose(p);
+            }
+            fprintf(f, "    git: %s\n", hash);
+            fprintf(f, "    iterations=%zu  warmup=%zu\n\n", iterations, warmup);
+            fprintf(f, "completed in %.2f ms (%.0f ns/iteration avg)\n", elapsed_ms,
+                    (elapsed_ms * 1'000'000.0) / static_cast<double>(iterations));
+            fprintf(f, "orders: %zu total, %zu filled, %zu cancelled, %zu rejected\n",
+                    state.oms.total_orders(), state.oms.total_fills(), state.oms.total_cancels(),
+                    state.oms.total_rejects());
+            fprintf(f, "position: %d, realized PnL: %.4f, total PnL: %.4f\n\n",
+                    state.oms.net_position(), state.oms.realized_pnl(),
+                    state.oms.total_pnl(state.book.mid_price()));
+            nts::instrument::StatsCalculator::print_report(tracer, f);
+            fclose(f);
+            fprintf(stderr, "  Results saved to %s\n", path.c_str());
+        }
+    }
 
     return 0;
 }

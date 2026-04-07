@@ -1,9 +1,9 @@
 #include "nts/market_data.h"
 
-#include <sys/socket.h>
-#include <netinet/in.h>
-#include <unistd.h>
 #include <fcntl.h>
+#include <netinet/in.h>
+#include <sys/socket.h>
+#include <unistd.h>
 #include <cerrno>
 #include <cstdio>
 #include <cstring>
@@ -55,13 +55,31 @@ bool MdReceiver::poll(MdMsg& msg) {
         return false;
     }
 
-    if (static_cast<size_t>(n) != sizeof(MdMsg)) return false;
+    if (n < static_cast<ssize_t>(sizeof(MdHeader))) return false;
 
-    // Gap detection
-    if (packets_ > 0 && msg.sequence_num != last_seq_ + 1) {
-        drops_ += (msg.sequence_num - last_seq_ - 1);
+    bool valid = false;
+    switch (msg.header.type) {
+        case MdMsgType::Quote:
+            valid = (n == static_cast<ssize_t>(sizeof(MdQuote)));
+            if (valid) quotes_++;
+            break;
+        case MdMsgType::Depth:
+            valid = (n == static_cast<ssize_t>(sizeof(MdDepth)));
+            if (valid) depths_++;
+            break;
+        case MdMsgType::Trade:
+            valid = (n == static_cast<ssize_t>(sizeof(MdTrade)));
+            if (valid) trades_++;
+            break;
+        default: return false;
     }
-    last_seq_ = msg.sequence_num;
+    if (!valid) return false;
+
+    uint32_t seq = msg.header.sequence_num;
+    if (packets_ > 0 && seq != last_seq_ + 1) {
+        drops_ += (seq - last_seq_ - 1);
+    }
+    last_seq_ = seq;
     packets_++;
 
     return true;
@@ -74,4 +92,4 @@ void MdReceiver::close() {
     }
 }
 
-} // namespace nts
+}  // namespace nts

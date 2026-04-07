@@ -19,6 +19,7 @@ add_library(nts_core STATIC
     src/strategy.cpp
     src/oms.cpp
     src/exchange.cpp
+    src/matching/orderbook.cpp
 )
 
 target_include_directories(nts_core PUBLIC include)
@@ -43,3 +44,8 @@ target_compile_options(md_generator PRIVATE -Wall -Wextra -Wpedantic)
 add_executable(pipeline_bench benchmarks/pipeline_bench.cpp)
 target_link_libraries(pipeline_bench PRIVATE nts_core)
 target_compile_options(pipeline_bench PRIVATE -Wall -Wextra -Wpedantic)
+
+# Matching engine benchmark + tests
+add_executable(matching_bench benchmarks/matching_bench.cpp)
+target_link_libraries(matching_bench PRIVATE nts_core)
+target_compile_options(matching_bench PRIVATE -Wall -Wextra -Wpedantic)

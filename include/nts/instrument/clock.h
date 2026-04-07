@@ -34,8 +34,7 @@ inline uint64_t ticks_to_ns(uint64_t ticks) {
 inline uint64_t raw_ticks() {
     struct timespec ts;
     clock_gettime(CLOCK_MONOTONIC, &ts);
-    return static_cast<uint64_t>(ts.tv_sec) * 1'000'000'000ULL
-         + static_cast<uint64_t>(ts.tv_nsec);
+    return static_cast<uint64_t>(ts.tv_sec) * 1'000'000'000ULL + static_cast<uint64_t>(ts.tv_nsec);
 }
 
 inline uint64_t ticks_to_ns(uint64_t ticks) {
@@ -58,10 +57,10 @@ inline uint64_t rdtsc() {
 }
 #elif defined(__aarch64__) || defined(_M_ARM64)
 inline uint64_t read_cntvct() {
-    uint64_t val;
+    uint64_t val = 0;
     __asm__ volatile("mrs %0, cntvct_el0" : "=r"(val));
     return val;
 }
 #endif
 
-} // namespace nts::instrument
+}  // namespace nts::instrument

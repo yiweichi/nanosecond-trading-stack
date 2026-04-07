@@ -1,19 +1,16 @@
 #pragma once
 
-#include "orderbook.h"
 #include <cstdint>
+#include "orderbook.h"
 
 namespace nts {
 
-enum class Signal : uint8_t {
-    None,
-    Buy,
-    Sell
-};
+enum class Signal : uint8_t { None, Buy, Sell };
 
 struct StrategyParams {
-    double   imbalance_threshold = 0.3;
-    uint32_t order_size          = DEFAULT_ORDER_SIZE;
+    double imbalance_threshold = 0.3;
+    Qty    order_size          = DEFAULT_ORDER_SIZE;
+    int    imbalance_levels    = 1;
 };
 
 class ImbalanceStrategy {
@@ -29,4 +26,4 @@ private:
     uint64_t       signals_ = 0;
 };
 
-} // namespace nts
+}  // namespace nts

@@ -1,21 +1,21 @@
 #pragma once
 
-#include "tracer.h"
 #include <cstdio>
 #include <vector>
+#include "tracer.h"
 
 namespace nts::instrument {
 
 struct LatencyStats {
-    uint64_t min_ns   = 0;
-    uint64_t max_ns   = 0;
-    uint64_t mean_ns  = 0;
-    uint64_t p50_ns   = 0;
-    uint64_t p90_ns   = 0;
-    uint64_t p99_ns   = 0;
-    uint64_t p999_ns  = 0;
+    uint64_t min_ns    = 0;
+    uint64_t max_ns    = 0;
+    uint64_t mean_ns   = 0;
+    uint64_t p50_ns    = 0;
+    uint64_t p90_ns    = 0;
+    uint64_t p99_ns    = 0;
+    uint64_t p999_ns   = 0;
     double   stddev_ns = 0.0;
-    size_t   samples  = 0;
+    size_t   samples   = 0;
 };
 
 struct Segment {
@@ -37,4 +37,4 @@ public:
     static const std::vector<Segment>& end_to_end_segments();
 };
 
-} // namespace nts::instrument
+}  // namespace nts::instrument

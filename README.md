@@ -28,27 +28,13 @@ optimization roadmap.
 ## Quick Start
 
 ```bash
-make              # Debug build
 make release      # Release build (-O2)
-make bench        # Release build + run benchmark
-make clean        # Remove build directory
+make bench        # Pipeline benchmark
+make match-bench  # Matching engine benchmark
 ```
 
-## Run
-
-```bash
-# Self-contained benchmark (no network, synthetic data)
-make bench
-make bench BENCH_ITERS=500000 BENCH_WARM=50000   # custom iterations
-
-# Full pipeline with UDP market data (two terminals)
-make gen          # Terminal 1: send fake market data
-make run          # Terminal 2: run pipeline for 10 seconds
-
-# Custom port / duration / rate
-make gen PORT=9999 RATE=5000
-make run PORT=9999 DURATION=30
-```
+See [USAGE.md](USAGE.md) for the full list of make targets, scenarios, and
+recommended parameters.
 
 ## Latency Instrumentation
 
