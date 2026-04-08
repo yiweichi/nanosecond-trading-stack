@@ -171,9 +171,9 @@ int main(int argc, char* argv[]) {
         FILE*       f    = fopen(path.c_str(), "w");
         if (f != nullptr) {
             fprintf(f, "=== Pipeline Latency Benchmark (C++) ===\n");
-            char  hash[64] = "";
+            char hash[64] = "";
             // NOLINTNEXTLINE(bugprone-command-processor)
-            FILE* p        = popen("git rev-parse --short HEAD 2>/dev/null", "r");
+            FILE* p = popen("git rev-parse --short HEAD 2>/dev/null", "r");
             if (p != nullptr) {
                 if (fgets(hash, sizeof(hash), p) != nullptr) {
                     size_t len = strlen(hash);

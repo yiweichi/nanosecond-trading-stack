@@ -127,10 +127,10 @@ struct Reporter {
     std::vector<std::pair<std::string, Histogram>> histograms;
 
     void git_version() {
-        char  hash[64]  = "";
-        char  dirty[16] = "";
+        char hash[64]  = "";
+        char dirty[16] = "";
         // NOLINTNEXTLINE(bugprone-command-processor)
-        FILE* p         = popen("git rev-parse --short HEAD 2>/dev/null", "r");
+        FILE* p = popen("git rev-parse --short HEAD 2>/dev/null", "r");
         if (p != nullptr) {
             if (fgets(hash, sizeof(hash), p) != nullptr) {
                 size_t len = strlen(hash);
