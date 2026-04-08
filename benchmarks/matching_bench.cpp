@@ -1,6 +1,7 @@
 #include "nts/instrument/clock.h"
 #include "nts/matching/orderbook.h"
 
+#include <sys/stat.h>
 #include <algorithm>
 #include <cassert>
 #include <cinttypes>
@@ -10,7 +11,6 @@
 #include <ctime>
 #include <numeric>
 #include <string>
-#include <sys/stat.h>
 #include <vector>
 
 using namespace nts::matching;
@@ -99,8 +99,8 @@ static const char* results_dir() {
 }
 
 static std::string fmt_utc_timestamp() {
-    time_t     now = time(nullptr);
-    struct tm  t;
+    time_t    now = time(nullptr);
+    struct tm t;
     gmtime_r(&now, &t);
     char buf[32];
     snprintf(buf, sizeof(buf), "%04d%02d%02dT%02d%02d%02d", t.tm_year + 1900, t.tm_mon + 1,
@@ -120,16 +120,17 @@ static void mkdirs(const std::string& path) {
 // ── Reporter (prints + collects text, saves to file like Rust) ──────────────
 
 struct Reporter {
-    std::string                          output;
-    Histogram                            combined;
-    uint64_t                             total_ops = 0;
-    std::string                          current_section;
+    std::string                                    output;
+    Histogram                                      combined;
+    uint64_t                                       total_ops = 0;
+    std::string                                    current_section;
     std::vector<std::pair<std::string, Histogram>> histograms;
 
     void git_version() {
-        char hash[64]  = "";
-        char dirty[16] = "";
-        FILE* p = popen("git rev-parse --short HEAD 2>/dev/null", "r");
+        char  hash[64]  = "";
+        char  dirty[16] = "";
+        // NOLINTNEXTLINE(bugprone-command-processor)
+        FILE* p         = popen("git rev-parse --short HEAD 2>/dev/null", "r");
         if (p != nullptr) {
             if (fgets(hash, sizeof(hash), p) != nullptr) {
                 size_t len = strlen(hash);
@@ -137,6 +138,7 @@ struct Reporter {
             }
             pclose(p);
         }
+        // NOLINTNEXTLINE(bugprone-command-processor)
         p = popen("git status --porcelain 2>/dev/null", "r");
         if (p != nullptr) {
             char tmp[8];
@@ -158,11 +160,9 @@ struct Reporter {
 
     void section(const char* title) {
         current_section = title;
-        char buf[512];
-        int  prefix_len = 4 + static_cast<int>(strlen(title)) + 6;
-        std::string bar(std::max(0, 94 - prefix_len), '\xe2');
-
-        std::string title_bar = "\n\xe2\x94\x80\xe2\x94\x80 ";
+        char        buf[512];
+        int         prefix_len = 4 + static_cast<int>(strlen(title)) + 6;
+        std::string title_bar  = "\n\xe2\x94\x80\xe2\x94\x80 ";
         title_bar += title;
         title_bar += " (ns) ";
         for (int i = prefix_len; i < 94; i++) title_bar += "\xe2\x94\x80";
@@ -246,12 +246,13 @@ struct Reporter {
             std::string safe_name;
             for (char c : label) {
                 if ((c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9') ||
-                    c == '-' || c == '_')
+                    c == '-' || c == '_') {
                     safe_name += c;
-                else
+                } else {
                     safe_name += '_';
+                }
             }
-            std::string csv = "percentile,latency_ns\n";
+            std::string csv    = "percentile,latency_ns\n";
             Histogram   h_copy = hist;
             for (int p = 0; p <= 90; p++) {
                 char line[64];
@@ -273,22 +274,23 @@ struct Reporter {
             }
             for (int p = 99900; p <= 99990; p++) {
                 char line[64];
-                snprintf(line, sizeof(line), "%.4f,%" PRIu64 "\n",
-                         static_cast<double>(p) / 1000.0,
+                snprintf(line, sizeof(line), "%.4f,%" PRIu64 "\n", static_cast<double>(p) / 1000.0,
                          h_copy.percentile(static_cast<double>(p) / 1000.0));
                 csv += line;
             }
             {
                 char line[64];
-                snprintf(line, sizeof(line), "99.9990,%" PRIu64 "\n",
-                         h_copy.percentile(99.999));
+                snprintf(line, sizeof(line), "99.9990,%" PRIu64 "\n", h_copy.percentile(99.999));
                 csv += line;
                 snprintf(line, sizeof(line), "100.0000,%" PRIu64 "\n", h_copy.max_val());
                 csv += line;
             }
 
-            std::string csv_path = hist_dir + "/" + safe_name + ".csv";
-            FILE*       cf = fopen(csv_path.c_str(), "w");
+            std::string csv_path = hist_dir;
+            csv_path += "/";
+            csv_path += safe_name;
+            csv_path += ".csv";
+            FILE* cf = fopen(csv_path.c_str(), "w");
             if (cf != nullptr) {
                 fwrite(csv.data(), 1, csv.size(), cf);
                 fclose(cf);
@@ -720,9 +722,9 @@ static void profile_passive_insert(uint64_t depth) {
     seed_both(book, depth, id, fills);
 
     for (uint64_t i = 0; i < WARMUP + ITERS; i++) {
-        Side  side  = (id % 2 == 0) ? Side::Buy : Side::Sell;
-        Price price = (id % 2 == 0) ? MID - SPREAD - 200 - (id % 100)
-                                    : MID + SPREAD + 200 + (id % 100);
+        Side  side = (id % 2 == 0) ? Side::Buy : Side::Sell;
+        Price price =
+            (id % 2 == 0) ? MID - SPREAD - 200 - (id % 100) : MID + SPREAD + 200 + (id % 100);
         fills.clear();
         book.add_order(Order{id, side, price, 10, OrderType::Limit}, fills);
         id++;
@@ -869,10 +871,11 @@ static void profile_mixed_workload(uint64_t depth) {
                 (id % 2 == 0) ? MID - SPREAD - 200 - (id % 100) : MID + SPREAD + 200 + (id % 100);
             fills.clear();
             book.add_order(Order{id, side, price, 10, OrderType::Limit}, fills);
-            if (cancel_ring.size() < ring_cap)
+            if (cancel_ring.size() < ring_cap) {
                 cancel_ring.push_back(id);
-            else
+            } else {
                 cancel_ring[ring_idx % ring_cap] = id;
+            }
         } else {
             Side  side  = (id % 2 == 0) ? Side::Buy : Side::Sell;
             Price price = (id % 2 == 0) ? MID + SPREAD + 200 : MID - SPREAD - 200;
@@ -885,7 +888,7 @@ static void profile_mixed_workload(uint64_t depth) {
 
 // ── CLI helpers ─────────────────────────────────────────────────────────────
 
-enum class ScenarioKind {
+enum class ScenarioKind : uint8_t {
     PassiveInsert,
     AggressiveFill,
     MultiLevelSweep,
@@ -897,19 +900,25 @@ enum class ScenarioKind {
 };
 
 static bool parse_scenario(const char* name, ScenarioKind& out) {
-    struct Entry { const char* name; ScenarioKind kind; };
+    struct Entry {
+        const char*  name;
+        ScenarioKind kind;
+    };
     static const Entry table[] = {
-        {"passive-insert",    ScenarioKind::PassiveInsert},
-        {"aggressive-fill",   ScenarioKind::AggressiveFill},
+        {"passive-insert", ScenarioKind::PassiveInsert},
+        {"aggressive-fill", ScenarioKind::AggressiveFill},
         {"multi-level-sweep", ScenarioKind::MultiLevelSweep},
-        {"market-order",      ScenarioKind::MarketOrder},
-        {"cancel",            ScenarioKind::Cancel},
-        {"cancel-hot-level",  ScenarioKind::CancelHotLevel},
-        {"drain-single-level",ScenarioKind::DrainSingleLevel},
-        {"mixed-workload",    ScenarioKind::MixedWorkload},
+        {"market-order", ScenarioKind::MarketOrder},
+        {"cancel", ScenarioKind::Cancel},
+        {"cancel-hot-level", ScenarioKind::CancelHotLevel},
+        {"drain-single-level", ScenarioKind::DrainSingleLevel},
+        {"mixed-workload", ScenarioKind::MixedWorkload},
     };
     for (const auto& e : table) {
-        if (strcmp(name, e.name) == 0) { out = e.kind; return true; }
+        if (strcmp(name, e.name) == 0) {
+            out = e.kind;
+            return true;
+        }
     }
     return false;
 }
@@ -994,36 +1003,44 @@ static void run_profile_scenario(ScenarioKind kind, uint64_t depth, uint64_t lev
     for (uint64_t rep = 0; rep < repeat; rep++) {
         switch (kind) {
             case ScenarioKind::PassiveInsert:
-                for (uint64_t d : values(depth, {0, 100, 10'000, 100'000}))
+                for (uint64_t d : values(depth, {0, 100, 10'000, 100'000})) {
                     profile_passive_insert(d);
+                }
                 break;
             case ScenarioKind::AggressiveFill:
-                for (uint64_t d : values(depth, {100, 10'000, 100'000}))
+                for (uint64_t d : values(depth, {100, 10'000, 100'000})) {
                     profile_aggressive_fill(d);
+                }
                 break;
             case ScenarioKind::MultiLevelSweep:
-                for (uint64_t l : values(levels, {1, 5, 10, 50}))
+                for (uint64_t l : values(levels, {1, 5, 10, 50})) {
                     profile_multi_level_sweep(l);
+                }
                 break;
             case ScenarioKind::MarketOrder:
-                for (uint64_t d : values(depth, {100, 10'000, 100'000}))
+                for (uint64_t d : values(depth, {100, 10'000, 100'000})) {
                     profile_market_order(d);
+                }
                 break;
             case ScenarioKind::Cancel:
-                for (uint64_t d : values(depth, {100, 10'000, 100'000}))
+                for (uint64_t d : values(depth, {100, 10'000, 100'000})) {
                     profile_cancel(d);
+                }
                 break;
             case ScenarioKind::CancelHotLevel:
-                for (uint64_t n : values(orders, {10, 100, 1'000, 10'000}))
+                for (uint64_t n : values(orders, {10, 100, 1'000, 10'000})) {
                     profile_cancel_hot_level(n);
+                }
                 break;
             case ScenarioKind::DrainSingleLevel:
-                for (uint64_t n : values(orders, {10, 50, 100, 500, 1'000}))
+                for (uint64_t n : values(orders, {10, 50, 100, 500, 1'000})) {
                     profile_drain_single_level(n);
+                }
                 break;
             case ScenarioKind::MixedWorkload:
-                for (uint64_t d : values(depth, {100, 10'000, 100'000}))
+                for (uint64_t d : values(depth, {100, 10'000, 100'000})) {
                     profile_mixed_workload(d);
+                }
                 break;
         }
     }
@@ -1033,26 +1050,26 @@ static void run_profile_scenario(ScenarioKind kind, uint64_t depth, uint64_t lev
 
 static void print_usage(const char* prog) {
     fprintf(stderr,
-        "Usage:\n"
-        "  %s                                          Run all benchmarks\n"
-        "  %s bench [--scenario <name>] [--depth N] [--levels N] [--orders N]\n"
-        "  %s profile --scenario <name> [--depth N] [--levels N] [--orders N] [--repeat N]\n"
-        "\n"
-        "Scenarios: passive-insert, aggressive-fill, multi-level-sweep, market-order,\n"
-        "           cancel, cancel-hot-level, drain-single-level, mixed-workload\n",
-        prog, prog, prog);
+            "Usage:\n"
+            "  %s                                          Run all benchmarks\n"
+            "  %s bench [--scenario <name>] [--depth N] [--levels N] [--orders N]\n"
+            "  %s profile --scenario <name> [--depth N] [--levels N] [--orders N] [--repeat N]\n"
+            "\n"
+            "Scenarios: passive-insert, aggressive-fill, multi-level-sweep, market-order,\n"
+            "           cancel, cancel-hot-level, drain-single-level, mixed-workload\n",
+            prog, prog, prog);
 }
 
 int main(int argc, char* argv[]) {
     run_tests();
 
-    enum class Mode { BenchAll, BenchScenario, Profile };
-    Mode         mode     = Mode::BenchAll;
-    ScenarioKind scenario = ScenarioKind::PassiveInsert;
-    uint64_t     depth    = 0;
-    uint64_t     levels   = 0;
-    uint64_t     orders   = 0;
-    uint64_t     repeat   = 1;
+    enum class Mode : uint8_t { BenchAll, BenchScenario, Profile };
+    Mode         mode         = Mode::BenchAll;
+    ScenarioKind scenario     = ScenarioKind::PassiveInsert;
+    uint64_t     depth        = 0;
+    uint64_t     levels       = 0;
+    uint64_t     orders       = 0;
+    uint64_t     repeat       = 1;
     bool         has_scenario = false;
 
     for (int i = 1; i < argc; i++) {
@@ -1091,8 +1108,8 @@ int main(int argc, char* argv[]) {
         uint64_t t0 = nts::instrument::now_ns();
         run_profile_scenario(scenario, depth, levels, orders, repeat);
         double elapsed_s = static_cast<double>(nts::instrument::now_ns() - t0) / 1'000'000'000.0;
-        fprintf(stderr, "profile complete: repeat=%llu elapsed=%.2fs\n",
-                (unsigned long long)repeat, elapsed_s);
+        fprintf(stderr, "profile complete: repeat=%llu elapsed=%.2fs\n", (unsigned long long)repeat,
+                elapsed_s);
         return 0;
     }
 
@@ -1112,10 +1129,10 @@ int main(int argc, char* argv[]) {
         run_bench_scenario(r, scenario, depth, levels, orders);
     } else {
         static const ScenarioKind all_scenarios[] = {
-            ScenarioKind::PassiveInsert,   ScenarioKind::AggressiveFill,
-            ScenarioKind::MultiLevelSweep, ScenarioKind::MarketOrder,
-            ScenarioKind::Cancel,          ScenarioKind::CancelHotLevel,
-            ScenarioKind::DrainSingleLevel,ScenarioKind::MixedWorkload,
+            ScenarioKind::PassiveInsert,    ScenarioKind::AggressiveFill,
+            ScenarioKind::MultiLevelSweep,  ScenarioKind::MarketOrder,
+            ScenarioKind::Cancel,           ScenarioKind::CancelHotLevel,
+            ScenarioKind::DrainSingleLevel, ScenarioKind::MixedWorkload,
         };
         for (auto s : all_scenarios) run_bench_scenario(r, s, 0, 0, 0);
     }

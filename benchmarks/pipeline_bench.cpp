@@ -7,13 +7,13 @@
 #include "nts/orderbook.h"
 #include "nts/strategy.h"
 
+#include <sys/stat.h>
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
 #include <ctime>
 #include <random>
 #include <string>
-#include <sys/stat.h>
 
 static nts::MdQuote make_quote(double& price, uint32_t& seq, std::mt19937& rng,
                                std::normal_distribution<double>&        price_step,
@@ -168,11 +168,12 @@ int main(int argc, char* argv[]) {
                  t.tm_mday, t.tm_hour, t.tm_min, t.tm_sec);
 
         std::string path = std::string(dir) + "/" + ts + ".txt";
-        FILE*       f = fopen(path.c_str(), "w");
+        FILE*       f    = fopen(path.c_str(), "w");
         if (f != nullptr) {
             fprintf(f, "=== Pipeline Latency Benchmark (C++) ===\n");
-            char hash[64] = "";
-            FILE* p = popen("git rev-parse --short HEAD 2>/dev/null", "r");
+            char  hash[64] = "";
+            // NOLINTNEXTLINE(bugprone-command-processor)
+            FILE* p        = popen("git rev-parse --short HEAD 2>/dev/null", "r");
             if (p != nullptr) {
                 if (fgets(hash, sizeof(hash), p) != nullptr) {
                     size_t len = strlen(hash);

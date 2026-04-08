@@ -60,13 +60,17 @@ public:
     // ── Hot path (inline) ────────────────────────────────────────────────
 
     inline void start_trace() {
-        if (__builtin_expect(!enabled_, 0)) return;  // NOLINT(readability-implicit-bool-conversion)
+        if (__builtin_expect(!enabled_, 0) != 0) {  // NOLINT(readability-implicit-bool-conversion)
+            return;
+        }
         in_trace_                          = true;
         traces_[write_pos()].recorded_mask = 0;
     }
 
     inline void record(Hop hop) {
-        if (__builtin_expect(!in_trace_, 0)) return;  // NOLINT(readability-implicit-bool-conversion)
+        if (__builtin_expect(!in_trace_, 0) != 0) {  // NOLINT(readability-implicit-bool-conversion)
+            return;
+        }
         auto pos                = write_pos();
         auto idx                = static_cast<size_t>(hop);
         traces_[pos].ticks[idx] = raw_ticks();
@@ -74,7 +78,9 @@ public:
     }
 
     inline void end_trace() {
-        if (__builtin_expect(!in_trace_, 0)) return;  // NOLINT(readability-implicit-bool-conversion)
+        if (__builtin_expect(!in_trace_, 0) != 0) {  // NOLINT(readability-implicit-bool-conversion)
+            return;
+        }
         in_trace_ = false;
         total_count_++;
     }
