@@ -4,12 +4,14 @@
 #include "nts/instrument/tracer.h"
 #include "nts/market_data.h"
 #include "nts/oms.h"
+#include "nts/order_gateway.h"
 #include "nts/orderbook.h"
 #include "nts/strategy.h"
 
 #include <csignal>
 #include <cstdio>
 #include <cstdlib>
+#include <cstring>
 
 static volatile sig_atomic_t running = 1;
 
@@ -17,28 +19,45 @@ static void on_signal(int) {
     running = 0;
 }
 
-int main(int argc, char* argv[]) {
-    uint16_t port         = nts::DEFAULT_PORT;
-    int      duration_sec = 10;
+struct Args {
+    uint16_t    md_port       = nts::DEFAULT_PORT;
+    int         duration_sec  = 10;
+    bool        live          = false;
+    const char* exchange_host = "127.0.0.1";
+    uint16_t    order_port    = nts::OrderGateway::DEFAULT_ORDER_PORT;
+};
 
-    if (argc > 1) port = static_cast<uint16_t>(std::strtol(argv[1], nullptr, 10));
-    if (argc > 2) duration_sec = static_cast<int>(std::strtol(argv[2], nullptr, 10));
+static Args parse_args(int argc, char* argv[]) {
+    Args a;
+    for (int i = 1; i < argc; i++) {
+        if (std::strcmp(argv[i], "--live") == 0) {
+            a.live = true;
+        } else if (std::strcmp(argv[i], "--exchange-host") == 0 && i + 1 < argc) {
+            a.exchange_host = argv[++i];
+        } else if (std::strcmp(argv[i], "--order-port") == 0 && i + 1 < argc) {
+            a.order_port = static_cast<uint16_t>(std::strtol(argv[++i], nullptr, 10));
+        } else if (std::strcmp(argv[i], "--port") == 0 && i + 1 < argc) {
+            a.md_port = static_cast<uint16_t>(std::strtol(argv[++i], nullptr, 10));
+        } else if (std::strcmp(argv[i], "--duration") == 0 && i + 1 < argc) {
+            a.duration_sec = static_cast<int>(std::strtol(argv[++i], nullptr, 10));
+        } else {
+            // Legacy positional args: port [duration]
+            if (i == 1) {
+                a.md_port = static_cast<uint16_t>(std::strtol(argv[i], nullptr, 10));
+            } else if (i == 2) {
+                a.duration_sec = static_cast<int>(std::strtol(argv[i], nullptr, 10));
+            }
+        }
+    }
+    return a;
+}
 
-    signal(SIGINT, on_signal);
-    signal(SIGTERM, on_signal);
-
-    nts::MdReceiver        md;
-    nts::OrderBook         book;
-    nts::ImbalanceStrategy strategy(nts::StrategyParams{});
-    nts::OMS               oms;
-    nts::MockExchange      exchange;
-
-    nts::instrument::HopTracer tracer;
-
-    if (!md.init(port)) return 1;
-
-    fprintf(stderr, "[pipeline] running for %d seconds (Ctrl-C to stop early)\n", duration_sec);
-
+/// Core pipeline loop — templated over the exchange type (MockExchange or OrderGateway).
+template <typename Exchange>
+static void run_pipeline(nts::MdReceiver& md, nts::OrderBook& book,
+                         nts::ImbalanceStrategy& strategy, nts::OMS& oms,
+                         Exchange& exchange, nts::instrument::HopTracer& tracer,
+                         int duration_sec) {
     uint64_t start_ns    = nts::instrument::now_ns();
     uint64_t deadline_ns = start_ns + static_cast<uint64_t>(duration_sec) * 1'000'000'000ULL;
     uint64_t iterations  = 0;
@@ -63,6 +82,7 @@ int main(int argc, char* argv[]) {
                 case nts::MdMsgType::Quote: book.on_quote(msg.quote); break;
                 case nts::MdMsgType::Depth: book.on_depth(msg.depth); break;
                 case nts::MdMsgType::Trade: book.on_trade(msg.trade); break;
+                case nts::MdMsgType::Reference: break;
             }
             tracer.record(Hop::BookUpdated);
 
@@ -102,16 +122,15 @@ int main(int argc, char* argv[]) {
         iterations++;
     }
 
-    md.close();
-
     double elapsed_s = static_cast<double>(nts::instrument::now_ns() - start_ns) / 1'000'000'000.0;
 
     fprintf(stderr, "\n[pipeline] stopped after %.2f seconds, %llu iterations\n", elapsed_s,
             static_cast<unsigned long long>(iterations));
     fprintf(stderr,
-            "[pipeline] packets: %llu recv, %llu gaps | quotes: %llu, depths: %llu, trades: %llu\n",
+            "[pipeline] packets: %llu recv, %llu gaps | refs: %llu, quotes: %llu, depths: %llu, trades: %llu\n",
             static_cast<unsigned long long>(md.packets_received()),
             static_cast<unsigned long long>(md.packets_dropped()),
+            static_cast<unsigned long long>(md.references_received()),
             static_cast<unsigned long long>(md.quotes_received()),
             static_cast<unsigned long long>(md.depths_received()),
             static_cast<unsigned long long>(md.trades_received()));
@@ -121,6 +140,46 @@ int main(int argc, char* argv[]) {
             oms.net_position(), oms.realized_pnl(), oms.total_pnl(book.mid_price()));
 
     nts::instrument::StatsCalculator::print_report(tracer);
+}
+
+int main(int argc, char* argv[]) {
+    Args args = parse_args(argc, argv);
+
+    signal(SIGINT, on_signal);
+    signal(SIGTERM, on_signal);
+    signal(SIGPIPE, SIG_IGN);
+
+    nts::MdReceiver        md;
+    nts::OrderBook         book;
+    nts::ImbalanceStrategy strategy(nts::StrategyParams{});
+    nts::OMS               oms;
+
+    nts::instrument::HopTracer tracer;
+
+    if (!md.init(args.md_port)) return 1;
+
+    if (args.live) {
+        // ── Live mode: connect to Rust exchange ──────────────────
+        nts::OrderGateway gateway;
+        if (!gateway.connect(args.exchange_host, args.order_port)) return 1;
+
+        fprintf(stderr, "[pipeline] LIVE mode — exchange=%s:%u, md=:%u, duration=%ds\n",
+                args.exchange_host, args.order_port, args.md_port, args.duration_sec);
+
+        run_pipeline(md, book, strategy, oms, gateway, tracer, args.duration_sec);
+
+        gateway.close();
+    } else {
+        // ── Standalone mode: local MockExchange ──────────────────
+        nts::MockExchange exchange;
+
+        fprintf(stderr, "[pipeline] standalone mode — md=:%u, duration=%ds\n",
+                args.md_port, args.duration_sec);
+
+        run_pipeline(md, book, strategy, oms, exchange, tracer, args.duration_sec);
+    }
+
+    md.close();
 
     return 0;
 }

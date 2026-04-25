@@ -11,6 +11,7 @@ enum class MdMsgType : uint8_t {
     Quote = 1,
     Depth = 2,
     Trade = 3,
+    Reference = 4,
 };
 
 struct MdHeader {
@@ -30,6 +31,13 @@ struct MdQuote {
     Qty      ask_size;
 };
 static_assert(sizeof(MdQuote) == 48, "MdQuote layout mismatch");
+
+struct MdReference {
+    MdHeader header;
+    double   reference_mid;
+    uint8_t  _pad[8];
+};
+static_assert(sizeof(MdReference) == 40, "MdReference layout mismatch");
 
 struct MdDepthLevel {
     double price;
@@ -58,10 +66,11 @@ struct MdTrade {
 // Union for receiving any message type over UDP.
 // Size equals the largest member (MdDepth).
 union MdMsg {
-    MdHeader header;
-    MdQuote  quote;
-    MdDepth  depth;
-    MdTrade  trade;
+    MdHeader    header;
+    MdQuote     quote;
+    MdReference reference;
+    MdDepth     depth;
+    MdTrade     trade;
 };
 
 class MdReceiver {
@@ -73,17 +82,19 @@ public:
     uint64_t packets_received() const { return packets_; }
     uint64_t packets_dropped() const { return drops_; }
     uint64_t quotes_received() const { return quotes_; }
+    uint64_t references_received() const { return references_; }
     uint64_t depths_received() const { return depths_; }
     uint64_t trades_received() const { return trades_; }
 
 private:
     int      sockfd_   = -1;
-    uint64_t packets_  = 0;
-    uint64_t drops_    = 0;
-    uint64_t quotes_   = 0;
-    uint64_t depths_   = 0;
-    uint64_t trades_   = 0;
-    uint32_t last_seq_ = 0;
+    uint64_t packets_    = 0;
+    uint64_t drops_      = 0;
+    uint64_t quotes_     = 0;
+    uint64_t references_ = 0;
+    uint64_t depths_     = 0;
+    uint64_t trades_     = 0;
+    uint32_t last_seq_   = 0;
 };
 
 }  // namespace nts

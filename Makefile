@@ -29,6 +29,7 @@ BUILD_TYPE  ?= Debug
 BENCH_ITERS ?= 100000
 BENCH_WARM  ?= 10000
 PORT        ?= 12345
+ORDER_PORT  ?= 12346
 DURATION    ?= 10
 RATE        ?= 5000
 
@@ -36,7 +37,7 @@ SRCS := $(shell find src -name '*.cpp') $(shell find benchmarks -name '*.cpp')
 HDRS := $(shell find include -name '*.h')
 ALL_FILES := $(SRCS) $(HDRS)
 
-.PHONY: debug release clean bench match-bench match-scenario match-profile run gen fmt fmt-check lint
+.PHONY: debug release clean bench match-bench match-scenario match-profile run trade gen fmt fmt-check lint
 
 release:
 	@mkdir -p $(BUILD_DIR) && cd $(BUILD_DIR) && cmake .. -DCMAKE_BUILD_TYPE=Release && make -j
@@ -62,7 +63,11 @@ match-profile: release
 	@./$(BUILD_DIR)/matching_bench profile --scenario $(SCENARIO) $(if $(DEPTH),--depth $(DEPTH),) $(if $(LEVELS),--levels $(LEVELS),) $(if $(ORDERS),--orders $(ORDERS),) $(if $(REPEAT),--repeat $(REPEAT),)
 
 run: release
-	@./$(BUILD_DIR)/nts_pipeline $(PORT) $(DURATION)
+	@./$(BUILD_DIR)/nts_pipeline --port $(PORT) --duration $(DURATION)
+
+trade: release
+	@echo "Connecting to Rust exchange (md=:$(PORT), orders=:$(ORDER_PORT))..."
+	@./$(BUILD_DIR)/nts_pipeline --live --port $(PORT) --duration $(DURATION) $(if $(ORDER_PORT),--order-port $(ORDER_PORT),) $(if $(EXCHANGE_HOST),--exchange-host $(EXCHANGE_HOST),)
 
 gen: release
 	@./$(BUILD_DIR)/md_generator $(PORT) $(RATE)

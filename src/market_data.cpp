@@ -63,6 +63,10 @@ bool MdReceiver::poll(MdMsg& msg) {
             valid = (n == static_cast<ssize_t>(sizeof(MdQuote)));
             if (valid) quotes_++;
             break;
+        case MdMsgType::Reference:
+            valid = (n == static_cast<ssize_t>(sizeof(MdReference)));
+            if (valid) references_++;
+            break;
         case MdMsgType::Depth:
             valid = (n == static_cast<ssize_t>(sizeof(MdDepth)));
             if (valid) depths_++;
