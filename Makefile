@@ -30,6 +30,7 @@ BENCH_ITERS ?= 100000
 BENCH_WARM  ?= 10000
 PORT        ?= 12345
 ORDER_PORT  ?= 12346
+MD_GROUP    ?= 239.1.1.1
 DURATION    ?= 10
 RATE        ?= 5000
 
@@ -63,11 +64,11 @@ match-profile: release
 	@./$(BUILD_DIR)/matching_bench profile --scenario $(SCENARIO) $(if $(DEPTH),--depth $(DEPTH),) $(if $(LEVELS),--levels $(LEVELS),) $(if $(ORDERS),--orders $(ORDERS),) $(if $(REPEAT),--repeat $(REPEAT),)
 
 run: release
-	@./$(BUILD_DIR)/nts_pipeline --port $(PORT) --duration $(DURATION)
+	@./$(BUILD_DIR)/nts_pipeline --port $(PORT) --md-group $(MD_GROUP) --duration $(DURATION)
 
 trade: release
-	@echo "Connecting to Rust exchange (md=:$(PORT), orders=:$(ORDER_PORT))..."
-	@./$(BUILD_DIR)/nts_pipeline --live --port $(PORT) --duration $(DURATION) $(if $(ORDER_PORT),--order-port $(ORDER_PORT),) $(if $(EXCHANGE_HOST),--exchange-host $(EXCHANGE_HOST),)
+	@echo "Connecting to Rust exchange (md=$(MD_GROUP):$(PORT), orders=:$(ORDER_PORT))..."
+	@./$(BUILD_DIR)/nts_pipeline --live --port $(PORT) --md-group $(MD_GROUP) --duration $(DURATION) $(if $(ORDER_PORT),--order-port $(ORDER_PORT),) $(if $(EXCHANGE_HOST),--exchange-host $(EXCHANGE_HOST),)
 
 gen: release
 	@./$(BUILD_DIR)/md_generator $(PORT) $(RATE)

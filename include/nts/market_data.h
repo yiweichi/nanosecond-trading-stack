@@ -75,7 +75,9 @@ union MdMsg {
 
 class MdReceiver {
 public:
-    bool init(uint16_t port);
+    static constexpr const char* DEFAULT_MULTICAST_GROUP = "239.1.1.1";
+
+    bool init(uint16_t port, const char* multicast_group = DEFAULT_MULTICAST_GROUP);
     bool poll(MdMsg& msg);
     void close();
 

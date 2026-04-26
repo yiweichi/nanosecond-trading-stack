@@ -33,6 +33,17 @@ static nts::MdQuote make_quote(double& price, uint32_t& seq, std::mt19937& rng,
     return q;
 }
 
+static nts::MdReference make_reference(double price, uint32_t& seq) {
+    nts::MdReference r;
+    std::memset(&r, 0, sizeof(r));
+    r.header.timestamp_ns  = nts::instrument::now_ns();
+    r.header.instrument_id = nts::DEFAULT_INSTRUMENT;
+    r.header.sequence_num  = seq++;
+    r.header.type          = nts::MdMsgType::Reference;
+    r.reference_mid        = price;
+    return r;
+}
+
 struct PipelineState {
     nts::OrderBook         book;
     nts::ImbalanceStrategy strategy;
@@ -42,18 +53,19 @@ struct PipelineState {
     explicit PipelineState(const nts::StrategyParams& params) : strategy(params) {}
 };
 
-static void run_step(PipelineState& st, const nts::MdQuote& q) {
+static void run_step(PipelineState& st, const nts::MdReference& r, const nts::MdQuote& q) {
+    st.book.on_reference(r);
     st.book.on_quote(q);
 
     if (st.book.valid()) st.oms.set_reference_price(st.book.mid_price());
 
-    nts::Signal sig = st.strategy.on_book_update(st.book);
+    nts::Signal sig = st.strategy.on_book_update(st.book, st.oms.net_position());
 
     if (sig != nts::Signal::None && st.book.valid()) {
         nts::Side  side  = (sig == nts::Signal::Buy) ? nts::Side::Buy : nts::Side::Sell;
         nts::Price price = (side == nts::Side::Buy) ? st.book.best_ask() : st.book.best_bid();
 
-        nts::Order* order = st.oms.send_new(side, price, nts::DEFAULT_ORDER_SIZE);
+        nts::Order* order = st.oms.send_new(side, price, st.strategy.order_size(), nts::OrderType::IOC);
         if (order != nullptr) st.exchange.submit_order(*order);
     }
 
@@ -63,26 +75,27 @@ static void run_step(PipelineState& st, const nts::MdQuote& q) {
     }
 }
 
-static void run_step_traced(PipelineState& st, const nts::MdQuote& q,
+static void run_step_traced(PipelineState& st, const nts::MdReference& r, const nts::MdQuote& q,
                             nts::instrument::HopTracer& tracer) {
     using nts::instrument::Hop;
 
     tracer.start_trace();
     tracer.record(Hop::RecvDone);
 
+    st.book.on_reference(r);
     st.book.on_quote(q);
     tracer.record(Hop::BookUpdated);
 
     if (st.book.valid()) st.oms.set_reference_price(st.book.mid_price());
 
-    nts::Signal sig = st.strategy.on_book_update(st.book);
+    nts::Signal sig = st.strategy.on_book_update(st.book, st.oms.net_position());
     tracer.record(Hop::StrategyDone);
 
     if (sig != nts::Signal::None && st.book.valid()) {
         nts::Side  side  = (sig == nts::Signal::Buy) ? nts::Side::Buy : nts::Side::Sell;
         nts::Price price = (side == nts::Side::Buy) ? st.book.best_ask() : st.book.best_bid();
 
-        nts::Order* order = st.oms.send_new(side, price, nts::DEFAULT_ORDER_SIZE);
+        nts::Order* order = st.oms.send_new(side, price, st.strategy.order_size(), nts::OrderType::IOC);
         if (order != nullptr) st.exchange.submit_order(*order);
         tracer.record(Hop::OrderSent);
     }
@@ -116,8 +129,9 @@ int main(int argc, char* argv[]) {
     uint32_t                                seq   = 0;
 
     for (size_t i = 0; i < warmup; i++) {
-        nts::MdQuote q = make_quote(price, seq, rng, price_step, size_dist);
-        run_step(state, q);
+        nts::MdReference r = make_reference(price, seq);
+        nts::MdQuote     q = make_quote(price, seq, rng, price_step, size_dist);
+        run_step(state, r, q);
     }
 
     state = PipelineState(nts::StrategyParams{});
@@ -125,8 +139,9 @@ int main(int argc, char* argv[]) {
     uint64_t bench_start = nts::instrument::now_ns();
 
     for (size_t i = 0; i < iterations; i++) {
-        nts::MdQuote q = make_quote(price, seq, rng, price_step, size_dist);
-        run_step_traced(state, q, tracer);
+        nts::MdReference r = make_reference(price, seq);
+        nts::MdQuote     q = make_quote(price, seq, rng, price_step, size_dist);
+        run_step_traced(state, r, q, tracer);
     }
 
     uint64_t bench_end  = nts::instrument::now_ns();

@@ -105,22 +105,26 @@ void OrderGateway::submit_cancel(OrderId order_id) {
 bool OrderGateway::poll_execution(ExecutionReport& report) {
     if (sockfd_ < 0) return false;
 
-    // Try to read more data into the buffer
-    if (read_len_ < sizeof(wire::WireExecReport)) {
+    while (read_len_ < BUF_SIZE) {
         ssize_t n = recv(sockfd_, read_buf_ + read_len_, BUF_SIZE - read_len_, 0);
         if (n > 0) {
             read_len_ += static_cast<size_t>(n);
-        } else if (n == 0) {
+            continue;
+        }
+        if (n == 0) {
             fprintf(stderr, "[OrderGateway] exchange disconnected\n");
             close();
             return false;
         }
-        // EAGAIN/EWOULDBLOCK means no data available — not an error
+        if (errno == EINTR) continue;
+        if (errno == EAGAIN || errno == EWOULDBLOCK) break;
+        perror("OrderGateway recv execution");
+        close();
+        return false;
     }
 
     if (read_len_ < sizeof(wire::WireExecReport)) return false;
 
-    // Deserialize one exec report
     wire::WireExecReport wire_rpt;
     std::memcpy(&wire_rpt, read_buf_, sizeof(wire_rpt));
 

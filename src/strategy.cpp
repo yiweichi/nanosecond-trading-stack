@@ -4,16 +4,19 @@ namespace nts {
 
 ImbalanceStrategy::ImbalanceStrategy(const StrategyParams& params) : params_(params) {}
 
-Signal ImbalanceStrategy::on_book_update(const OrderBook& book) {
-    if (!book.valid()) return Signal::None;
+Signal ImbalanceStrategy::on_book_update(const OrderBook& book, int32_t position) {
+    if (!book.valid() || !book.has_reference()) return Signal::None;
 
-    double imb = book.imbalance(params_.imbalance_levels);
+    const Price reference = book.reference_mid();
 
-    if (imb > params_.imbalance_threshold) {
+    if (reference >= book.best_ask() + params_.edge_threshold &&
+        position < params_.max_position) {
         signals_++;
         return Signal::Buy;
     }
-    if (imb < -params_.imbalance_threshold) {
+
+    if (book.best_bid() >= reference + params_.edge_threshold &&
+        position > -params_.max_position) {
         signals_++;
         return Signal::Sell;
     }

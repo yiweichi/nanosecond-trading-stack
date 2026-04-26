@@ -69,9 +69,17 @@ public:
     size_t live_order_count() const { return live_orders_; }
     size_t pending_count() const { return pending_new_ + pending_cxl_; }
     size_t total_orders() const { return order_count_; }
+    size_t total_accepted_orders() const { return accepted_orders_; }
+    size_t total_filled_orders() const { return filled_orders_; }
+    size_t total_missed_ioc() const { return missed_ioc_; }
     size_t total_fills() const { return fills_; }
+    size_t total_buy_fills() const { return buy_fills_; }
+    size_t total_sell_fills() const { return sell_fills_; }
+    Qty    total_buy_qty() const { return buy_qty_; }
+    Qty    total_sell_qty() const { return sell_qty_; }
     size_t total_cancels() const { return cancels_; }
     size_t total_rejects() const { return rejects_; }
+    size_t total_failed_orders() const { return rejects_ + missed_ioc_; }
     Qty    total_filled_qty() const { return total_filled_qty_; }
 
 private:
@@ -107,10 +115,17 @@ private:
     size_t     pending_cxl_ = 0;
 
     // Stats
+    size_t accepted_orders_  = 0;
+    size_t filled_orders_    = 0;
+    size_t missed_ioc_       = 0;
     size_t fills_            = 0;
+    size_t buy_fills_        = 0;
+    size_t sell_fills_       = 0;
     size_t cancels_          = 0;
     size_t rejects_          = 0;
     Qty    total_filled_qty_ = 0;
+    Qty    buy_qty_          = 0;
+    Qty    sell_qty_         = 0;
 
     // Hash map helpers (Fibonacci hashing + linear probing)
     size_t map_hash(OrderId id) const;

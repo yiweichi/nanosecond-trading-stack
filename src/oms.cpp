@@ -162,6 +162,7 @@ void OMS::on_execution(const ExecutionReport& report) {
             o.status         = OrderStatus::Live;
             o.last_update_ts = report.timestamp_ns;
             if (pending_new_ > 0) pending_new_--;
+            accepted_orders_++;
             live_orders_++;
             break;
         }
@@ -176,6 +177,7 @@ void OMS::on_execution(const ExecutionReport& report) {
             // Fill before explicit NewAck (common in practice)
             if (o.status == OrderStatus::Sent) {
                 if (pending_new_ > 0) pending_new_--;
+                accepted_orders_++;
                 live_orders_++;
             }
 
@@ -198,8 +200,16 @@ void OMS::on_execution(const ExecutionReport& report) {
             pending_position_delta_ -= fill_delta;
 
             update_position_on_fill(o.side, fq, report.fill_price);
+            if (o.filled_qty == fq) filled_orders_++;
             fills_++;
             total_filled_qty_ += fq;
+            if (o.side == Side::Buy) {
+                buy_fills_++;
+                buy_qty_ += fq;
+            } else {
+                sell_fills_++;
+                sell_qty_ += fq;
+            }
 
             if (fully_filled) {
                 if (live_orders_ > 0) live_orders_--;
@@ -211,6 +221,9 @@ void OMS::on_execution(const ExecutionReport& report) {
         case ExecType::CancelAck: {
             if (o.status == OrderStatus::PendingCancel) {
                 if (pending_cxl_ > 0) pending_cxl_--;
+            }
+            if (o.type == OrderType::IOC && o.filled_qty == 0) {
+                missed_ioc_++;
             }
             // Remove unfilled qty from pending position delta
             int32_t remaining = (o.side == Side::Buy) ? static_cast<int32_t>(o.leaves_qty)
@@ -229,7 +242,6 @@ void OMS::on_execution(const ExecutionReport& report) {
             if (o.status == OrderStatus::Sent) {
                 if (pending_new_ > 0) pending_new_--;
             }
-            // Remove full qty from pending position delta (nothing filled)
             int32_t remaining = (o.side == Side::Buy) ? static_cast<int32_t>(o.leaves_qty)
                                                       : -static_cast<int32_t>(o.leaves_qty);
             pending_position_delta_ -= remaining;

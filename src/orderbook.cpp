@@ -17,6 +17,13 @@ void OrderBook::on_quote(const MdQuote& q) {
     update_count_++;
 }
 
+void OrderBook::on_reference(const MdReference& r) {
+    reference_mid_ = r.reference_mid;
+    has_reference_ = true;
+    last_update_ts_ = r.header.timestamp_ns;
+    update_count_++;
+}
+
 void OrderBook::on_depth(const MdDepth& d) {
     bid_depth_ = std::min(static_cast<int>(d.bid_levels), MAX_LEVELS);
     for (int i = 0; i < bid_depth_; i++) {
@@ -166,6 +173,8 @@ void OrderBook::clear() {
     last_trade_price_ = 0.0;
     last_trade_qty_   = 0;
     last_trade_ts_    = 0;
+    reference_mid_    = 0.0;
+    has_reference_    = false;
     trade_count_      = 0;
     last_update_ts_   = 0;
     update_count_     = 0;

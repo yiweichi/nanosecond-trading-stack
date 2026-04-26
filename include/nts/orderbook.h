@@ -18,12 +18,15 @@ public:
 
     // ── Market data updates ──────────────────────────────────────
     void on_quote(const MdQuote& q);
+    void on_reference(const MdReference& r);
     void on_depth(const MdDepth& d);
     void on_trade(const MdTrade& t);
 
     // ── L1 access ────────────────────────────────────────────────
     Price best_bid() const;
     Price best_ask() const;
+    Price reference_mid() const { return reference_mid_; }
+    bool  has_reference() const { return has_reference_; }
     Qty   best_bid_qty() const;
     Qty   best_ask_qty() const;
 
@@ -72,6 +75,9 @@ private:
     PriceLevel asks_[MAX_LEVELS] = {};
     int        bid_depth_        = 0;
     int        ask_depth_        = 0;
+
+    Price reference_mid_ = 0.0;
+    bool  has_reference_ = false;
 
     Price    last_trade_price_ = 0.0;
     Qty      last_trade_qty_   = 0;

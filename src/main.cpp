@@ -21,6 +21,7 @@ static void on_signal(int) {
 
 struct Args {
     uint16_t    md_port       = nts::DEFAULT_PORT;
+    const char* md_group      = nts::MdReceiver::DEFAULT_MULTICAST_GROUP;
     int         duration_sec  = 10;
     bool        live          = false;
     const char* exchange_host = "127.0.0.1";
@@ -38,6 +39,8 @@ static Args parse_args(int argc, char* argv[]) {
             a.order_port = static_cast<uint16_t>(std::strtol(argv[++i], nullptr, 10));
         } else if (std::strcmp(argv[i], "--port") == 0 && i + 1 < argc) {
             a.md_port = static_cast<uint16_t>(std::strtol(argv[++i], nullptr, 10));
+        } else if (std::strcmp(argv[i], "--md-group") == 0 && i + 1 < argc) {
+            a.md_group = argv[++i];
         } else if (std::strcmp(argv[i], "--duration") == 0 && i + 1 < argc) {
             a.duration_sec = static_cast<int>(std::strtol(argv[++i], nullptr, 10));
         } else {
@@ -50,6 +53,34 @@ static Args parse_args(int argc, char* argv[]) {
         }
     }
     return a;
+}
+
+static void print_trading_report(const nts::MdReceiver& md, nts::OMS& oms, const nts::OrderBook& book,
+                                 double elapsed_s, uint64_t iterations) {
+    fprintf(stderr, "\n[pipeline] stopped after %.2f seconds, %llu iterations\n", elapsed_s,
+            static_cast<unsigned long long>(iterations));
+    fprintf(stderr,
+            "[pipeline] packets: %llu recv, %llu gaps | refs: %llu, quotes: %llu, depths: %llu, trades: %llu\n",
+            static_cast<unsigned long long>(md.packets_received()),
+            static_cast<unsigned long long>(md.packets_dropped()),
+            static_cast<unsigned long long>(md.references_received()),
+            static_cast<unsigned long long>(md.quotes_received()),
+            static_cast<unsigned long long>(md.depths_received()),
+            static_cast<unsigned long long>(md.trades_received()));
+    double hit_rate = (oms.total_accepted_orders() > 0)
+                          ? 100.0 * static_cast<double>(oms.total_filled_orders()) /
+                                static_cast<double>(oms.total_accepted_orders())
+                          : 0.0;
+    fprintf(stderr,
+            "[pipeline] Orders: %zu total, %zu accepted, %zu filled, %zu missed IOC, %zu rejected (%.1f%% hit)\n",
+            oms.total_orders(), oms.total_accepted_orders(), oms.total_filled_orders(),
+            oms.total_missed_ioc(), oms.total_rejects(), hit_rate);
+    fprintf(stderr,
+            "[pipeline] Fills:  %zu events, %u qty (%zu buys / %u buy qty, %zu sells / %u sell qty)\n",
+            oms.total_fills(), oms.total_filled_qty(), oms.total_buy_fills(), oms.total_buy_qty(),
+            oms.total_sell_fills(), oms.total_sell_qty());
+    fprintf(stderr, "[pipeline] PnL:    position %+d, realized %.4f, total %.4f\n",
+            oms.net_position(), oms.realized_pnl(), oms.total_pnl(book.mid_price()));
 }
 
 /// Core pipeline loop — templated over the exchange type (MockExchange or OrderGateway).
@@ -73,29 +104,36 @@ static void run_pipeline(nts::MdReceiver& md, nts::OrderBook& book,
         tracer.start_trace();
         tracer.record(Hop::RecvStart);
 
-        bool got_data = md.poll(msg);
+        bool got_data          = md.poll(msg);
+        bool last_md_was_quote = false;
 
         if (got_data) {
             tracer.record(Hop::RecvDone);
 
             switch (msg.header.type) {
-                case nts::MdMsgType::Quote: book.on_quote(msg.quote); break;
+                case nts::MdMsgType::Quote:
+                    book.on_quote(msg.quote);
+                    last_md_was_quote = true;
+                    break;
                 case nts::MdMsgType::Depth: book.on_depth(msg.depth); break;
                 case nts::MdMsgType::Trade: book.on_trade(msg.trade); break;
-                case nts::MdMsgType::Reference: break;
+                case nts::MdMsgType::Reference: book.on_reference(msg.reference); break;
             }
             tracer.record(Hop::BookUpdated);
 
             if (book.valid()) oms.set_reference_price(book.mid_price());
 
-            nts::Signal sig = strategy.on_book_update(book);
+            nts::Signal sig = nts::Signal::None;
+            if (last_md_was_quote) {
+                sig = strategy.on_book_update(book, oms.net_position());
+            }
             tracer.record(Hop::StrategyDone);
 
             if (sig != nts::Signal::None && book.valid()) {
                 nts::Side  side  = (sig == nts::Signal::Buy) ? nts::Side::Buy : nts::Side::Sell;
                 nts::Price price = (side == nts::Side::Buy) ? book.best_ask() : book.best_bid();
 
-                nts::Order* order = oms.send_new(side, price, nts::DEFAULT_ORDER_SIZE);
+                nts::Order* order = oms.send_new(side, price, strategy.order_size(), nts::OrderType::IOC);
                 if (order != nullptr) {
                     exchange.submit_order(*order);
                 }
@@ -114,7 +152,7 @@ static void run_pipeline(nts::MdReceiver& md, nts::OrderBook& book,
             tracer.discard_trace();
 
             nts::ExecutionReport exec;
-            if (exchange.poll_execution(exec)) {
+            while (exchange.poll_execution(exec)) {
                 oms.on_execution(exec);
             }
         }
@@ -124,22 +162,8 @@ static void run_pipeline(nts::MdReceiver& md, nts::OrderBook& book,
 
     double elapsed_s = static_cast<double>(nts::instrument::now_ns() - start_ns) / 1'000'000'000.0;
 
-    fprintf(stderr, "\n[pipeline] stopped after %.2f seconds, %llu iterations\n", elapsed_s,
-            static_cast<unsigned long long>(iterations));
-    fprintf(stderr,
-            "[pipeline] packets: %llu recv, %llu gaps | refs: %llu, quotes: %llu, depths: %llu, trades: %llu\n",
-            static_cast<unsigned long long>(md.packets_received()),
-            static_cast<unsigned long long>(md.packets_dropped()),
-            static_cast<unsigned long long>(md.references_received()),
-            static_cast<unsigned long long>(md.quotes_received()),
-            static_cast<unsigned long long>(md.depths_received()),
-            static_cast<unsigned long long>(md.trades_received()));
-    fprintf(stderr, "[pipeline] orders: %zu total, %zu filled, %zu cancelled, %zu rejected\n",
-            oms.total_orders(), oms.total_fills(), oms.total_cancels(), oms.total_rejects());
-    fprintf(stderr, "[pipeline] position: %d, realized PnL: %.4f, total PnL: %.4f\n",
-            oms.net_position(), oms.realized_pnl(), oms.total_pnl(book.mid_price()));
-
     nts::instrument::StatsCalculator::print_report(tracer);
+    print_trading_report(md, oms, book, elapsed_s, iterations);
 }
 
 int main(int argc, char* argv[]) {
@@ -156,15 +180,15 @@ int main(int argc, char* argv[]) {
 
     nts::instrument::HopTracer tracer;
 
-    if (!md.init(args.md_port)) return 1;
+    if (!md.init(args.md_port, args.md_group)) return 1;
 
     if (args.live) {
         // ── Live mode: connect to Rust exchange ──────────────────
         nts::OrderGateway gateway;
         if (!gateway.connect(args.exchange_host, args.order_port)) return 1;
 
-        fprintf(stderr, "[pipeline] LIVE mode — exchange=%s:%u, md=:%u, duration=%ds\n",
-                args.exchange_host, args.order_port, args.md_port, args.duration_sec);
+        fprintf(stderr, "[pipeline] LIVE mode — exchange=%s:%u, md=%s:%u, duration=%ds\n",
+                args.exchange_host, args.order_port, args.md_group, args.md_port, args.duration_sec);
 
         run_pipeline(md, book, strategy, oms, gateway, tracer, args.duration_sec);
 
@@ -173,8 +197,8 @@ int main(int argc, char* argv[]) {
         // ── Standalone mode: local MockExchange ──────────────────
         nts::MockExchange exchange;
 
-        fprintf(stderr, "[pipeline] standalone mode — md=:%u, duration=%ds\n",
-                args.md_port, args.duration_sec);
+        fprintf(stderr, "[pipeline] standalone mode — md=%s:%u, duration=%ds\n",
+                args.md_group, args.md_port, args.duration_sec);
 
         run_pipeline(md, book, strategy, oms, exchange, tracer, args.duration_sec);
     }

@@ -8,18 +8,19 @@ namespace nts {
 enum class Signal : uint8_t { None, Buy, Sell };
 
 struct StrategyParams {
-    double imbalance_threshold = 0.3;
-    Qty    order_size          = DEFAULT_ORDER_SIZE;
-    int    imbalance_levels    = 1;
+    Price edge_threshold = 2.0;
+    Qty   order_size     = 1;
+    int   max_position   = MAX_POSITION;
 };
 
 class ImbalanceStrategy {
 public:
     explicit ImbalanceStrategy(const StrategyParams& params);
 
-    Signal on_book_update(const OrderBook& book);
+    Signal on_book_update(const OrderBook& book, int32_t position);
 
     uint64_t signals_generated() const { return signals_; }
+    Qty      order_size() const { return params_.order_size; }
 
 private:
     StrategyParams params_;

@@ -1,5 +1,6 @@
 #include "nts/market_data.h"
 
+#include <arpa/inet.h>
 #include <fcntl.h>
 #include <netinet/in.h>
 #include <sys/socket.h>
@@ -10,7 +11,7 @@
 
 namespace nts {
 
-bool MdReceiver::init(uint16_t port) {
+bool MdReceiver::init(uint16_t port, const char* multicast_group) {
     sockfd_ = socket(AF_INET, SOCK_DGRAM, 0);
     if (sockfd_ < 0) {
         perror("socket");
@@ -27,6 +28,9 @@ bool MdReceiver::init(uint16_t port) {
 
     int reuse = 1;
     setsockopt(sockfd_, SOL_SOCKET, SO_REUSEADDR, &reuse, sizeof(reuse));
+#ifdef SO_REUSEPORT
+    setsockopt(sockfd_, SOL_SOCKET, SO_REUSEPORT, &reuse, sizeof(reuse));
+#endif
 
     struct sockaddr_in addr;
     std::memset(&addr, 0, sizeof(addr));
@@ -41,7 +45,19 @@ bool MdReceiver::init(uint16_t port) {
         return false;
     }
 
-    fprintf(stderr, "[MdReceiver] listening on UDP port %u\n", port);
+    struct ip_mreq mreq;
+    std::memset(&mreq, 0, sizeof(mreq));
+    mreq.imr_multiaddr.s_addr = inet_addr(multicast_group);
+    mreq.imr_interface.s_addr = htonl(INADDR_ANY);
+    if (mreq.imr_multiaddr.s_addr == INADDR_NONE ||
+        setsockopt(sockfd_, IPPROTO_IP, IP_ADD_MEMBERSHIP, &mreq, sizeof(mreq)) < 0) {
+        perror("IP_ADD_MEMBERSHIP");
+        ::close(sockfd_);
+        sockfd_ = -1;
+        return false;
+    }
+
+    fprintf(stderr, "[MdReceiver] listening on UDP multicast %s:%u\n", multicast_group, port);
     return true;
 }
 
