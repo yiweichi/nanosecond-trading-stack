@@ -116,7 +116,7 @@ static void run_pipeline(nts::MdReceiver& md, nts::OrderBook& book,
 
             nts::Signal sig = nts::Signal::None;
             if (last_md_was_quote) {
-                sig = strategy.on_book_update(book, oms.net_position(), msg.header.sequence_num);
+                sig = strategy.on_book_update(book, oms.net_position());
             }
             tracer.record(Hop::StrategyDone);
 

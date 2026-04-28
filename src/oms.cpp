@@ -131,21 +131,6 @@ Order* OMS::send_new(Side side, Price price, Qty qty, OrderType type) {
     return &o;
 }
 
-bool OMS::send_cancel(OrderId order_id) {
-    Order* o = find_order(order_id);
-    if (o == nullptr) return false;
-
-    if (o->status != OrderStatus::Live && o->status != OrderStatus::PartiallyFilled) {
-        return false;
-    }
-
-    o->status         = OrderStatus::PendingCancel;
-    o->last_update_ts = instrument::now_ns();
-    pending_cxl_++;
-
-    return true;
-}
-
 // ── Execution processing ────────────────────────────────────────────────────
 
 void OMS::on_execution(const ExecutionReport& report) {

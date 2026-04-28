@@ -52,9 +52,11 @@ void OrderGateway::submit_order(const Order& order) {
     msg.msg_type = wire::ORDER_MSG_NEW;
     msg.side     = static_cast<uint8_t>(order.side);
     switch (order.type) {
-        case OrderType::Limit: msg.order_type = wire::ORDER_TYPE_LIMIT; break;
         case OrderType::Market: msg.order_type = wire::ORDER_TYPE_MARKET; break;
         case OrderType::IOC: msg.order_type = wire::ORDER_TYPE_IOC_LIMIT; break;
+        case OrderType::Limit:
+            fprintf(stderr, "OrderGateway: limit orders are not supported by the wire protocol\n");
+            return;
     }
     msg.client_order_id = order.id;
     msg.price           = order.price;
@@ -72,31 +74,6 @@ void OrderGateway::submit_order(const Order& order) {
         if (n < 0 && errno == EINTR) continue;
         if (n < 0 && (errno == EAGAIN || errno == EWOULDBLOCK)) continue;
         perror("OrderGateway send order");
-        close();
-        return;
-    }
-}
-
-void OrderGateway::submit_cancel(OrderId order_id) {
-    if (sockfd_ < 0) return;
-
-    wire::WireOrderMsg msg;
-    std::memset(&msg, 0, sizeof(msg));
-    msg.msg_type        = wire::ORDER_MSG_CANCEL;
-    msg.cancel_order_id = order_id;
-
-    const uint8_t* data = reinterpret_cast<const uint8_t*>(&msg);
-    size_t         left = sizeof(msg);
-    while (left > 0) {
-        ssize_t n = ::send(sockfd_, data, left, MSG_NOSIGNAL);
-        if (n > 0) {
-            data += n;
-            left -= static_cast<size_t>(n);
-            continue;
-        }
-        if (n < 0 && errno == EINTR) continue;
-        if (n < 0 && (errno == EAGAIN || errno == EWOULDBLOCK)) continue;
-        perror("OrderGateway send cancel");
         close();
         return;
     }

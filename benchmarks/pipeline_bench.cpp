@@ -1,4 +1,3 @@
-#include "nts/exchange.h"
 #include "nts/instrument/clock.h"
 #include "nts/instrument/stats.h"
 #include "nts/instrument/tracer.h"
@@ -48,7 +47,41 @@ struct PipelineState {
     nts::OrderBook         book;
     nts::ImbalanceStrategy strategy;
     nts::OMS               oms;
-    nts::MockExchange      exchange;
+
+    struct BenchExchange {
+        nts::Order pending{};
+        bool       active = false;
+        bool       acked  = false;
+
+        void submit_order(const nts::Order& order) {
+            pending = order;
+            active  = true;
+            acked   = false;
+        }
+
+        bool poll_execution(nts::ExecutionReport& report) {
+            if (!active) return false;
+
+            report.order_id     = pending.id;
+            report.timestamp_ns = nts::instrument::now_ns();
+
+            if (!acked) {
+                report.exec_type  = nts::ExecType::NewAck;
+                report.fill_price = 0.0;
+                report.fill_qty   = 0;
+                report.leaves_qty = pending.qty;
+                acked             = true;
+                return true;
+            }
+
+            report.exec_type  = nts::ExecType::Fill;
+            report.fill_price = pending.price;
+            report.fill_qty   = pending.qty;
+            report.leaves_qty = 0;
+            active            = false;
+            return true;
+        }
+    } exchange;
 
     explicit PipelineState(const nts::StrategyParams& params) : strategy(params) {}
 };
@@ -59,7 +92,7 @@ static void run_step(PipelineState& st, const nts::MdReference& r, const nts::Md
 
     if (st.book.valid()) st.oms.set_reference_price(st.book.mid_price());
 
-    nts::Signal sig = st.strategy.on_book_update(st.book, st.oms.net_position(), 0);
+    nts::Signal sig = st.strategy.on_book_update(st.book, st.oms.net_position());
 
     if (sig != nts::Signal::None && st.book.valid()) {
         nts::Side  side  = (sig == nts::Signal::Buy) ? nts::Side::Buy : nts::Side::Sell;
@@ -88,7 +121,7 @@ static void run_step_traced(PipelineState& st, const nts::MdReference& r, const 
 
     if (st.book.valid()) st.oms.set_reference_price(st.book.mid_price());
 
-    nts::Signal sig = st.strategy.on_book_update(st.book, st.oms.net_position(), 0);
+    nts::Signal sig = st.strategy.on_book_update(st.book, st.oms.net_position());
     tracer.record(Hop::StrategyDone);
 
     if (sig != nts::Signal::None && st.book.valid()) {

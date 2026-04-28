@@ -44,7 +44,6 @@ public:
 
     // ── Order management ─────────────────────────────────────────
     Order* send_new(Side side, Price price, Qty qty, OrderType type = OrderType::Limit);
-    bool   send_cancel(OrderId order_id);
 
     // ── Execution processing ─────────────────────────────────────
     void on_execution(const ExecutionReport& report);

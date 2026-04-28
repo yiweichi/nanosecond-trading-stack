@@ -18,7 +18,6 @@ add_library(nts_core STATIC
     src/orderbook.cpp
     src/strategy.cpp
     src/oms.cpp
-    src/exchange.cpp
     src/order_gateway.cpp
     src/matching/orderbook.cpp
 )

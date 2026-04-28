@@ -8,14 +8,12 @@
 namespace nts {
 
 /// TCP client that connects to the Rust exchange server.
-/// Drop-in replacement for MockExchange in the live pipeline.
 class OrderGateway {
 public:
     static constexpr uint16_t DEFAULT_ORDER_PORT = wire::DEFAULT_ORDER_PORT;
 
     bool connect(const char* host, uint16_t port);
     void submit_order(const Order& order);
-    void submit_cancel(OrderId order_id);
     bool poll_execution(ExecutionReport& report);
     void close();
 
