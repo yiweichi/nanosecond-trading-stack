@@ -1,10 +1,9 @@
 #include "nts/strategy.h"
-
 namespace nts {
 
 ImbalanceStrategy::ImbalanceStrategy(const StrategyParams& params) : params_(params) {}
 
-Signal ImbalanceStrategy::on_book_update(const OrderBook& book, int32_t position) {
+Signal ImbalanceStrategy::on_book_update(const OrderBook& book, int32_t position, uint32_t seq) {
     if (!book.valid() || !book.has_reference()) return Signal::None;
 
     const Price reference = book.reference_mid();

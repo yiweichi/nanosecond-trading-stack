@@ -1,7 +1,6 @@
 #include "nts/oms.h"
 #include "nts/instrument/clock.h"
 
-#include <algorithm>
 #include <cmath>
 
 namespace nts {
@@ -199,7 +198,7 @@ void OMS::on_execution(const ExecutionReport& report) {
                 (o.side == Side::Buy) ? static_cast<int32_t>(fq) : -static_cast<int32_t>(fq);
             pending_position_delta_ -= fill_delta;
 
-            update_position_on_fill(o.side, fq, report.fill_price);
+            apply_trading_fill(o.side, fq, report.fill_price);
             if (o.filled_qty == fq) filled_orders_++;
             fills_++;
             total_filled_qty_ += fq;
@@ -267,42 +266,23 @@ void OMS::on_execution(const ExecutionReport& report) {
 
 // ── Position & PnL ──────────────────────────────────────────────────────────
 
-void OMS::update_position_on_fill(Side side, Qty qty, Price fill_price) {
-    int32_t delta   = (side == Side::Buy) ? static_cast<int32_t>(qty) : -static_cast<int32_t>(qty);
-    int32_t old_pos = position_;
-    int32_t new_pos = old_pos + delta;
-
-    bool opening = (old_pos == 0) || (old_pos > 0 && delta > 0) || (old_pos < 0 && delta < 0);
-
-    if (opening) {
-        double old_cost  = avg_entry_ * std::abs(static_cast<double>(old_pos));
-        double add_cost  = fill_price * static_cast<double>(qty);
-        double new_total = std::abs(static_cast<double>(new_pos));
-        avg_entry_       = (new_total > 0.0) ? (old_cost + add_cost) / new_total : 0.0;
+void OMS::apply_trading_fill(Side side, Qty qty, Price fill_price) {
+    double notional = fill_price * static_cast<double>(qty);
+    if (side == Side::Buy) {
+        position_ += static_cast<int32_t>(qty);
+        trading_cash_ -= notional;
     } else {
-        Qty close_qty = static_cast<Qty>(std::min(static_cast<int32_t>(qty), std::abs(old_pos)));
-        Qty open_qty  = qty - close_qty;
-
-        double pnl_per_unit = (old_pos > 0) ? (fill_price - avg_entry_) : (avg_entry_ - fill_price);
-        realized_pnl_ += pnl_per_unit * static_cast<double>(close_qty);
-
-        if (open_qty > 0) {
-            avg_entry_ = fill_price;
-        } else if (new_pos == 0) {
-            avg_entry_ = 0.0;
-        }
+        position_ -= static_cast<int32_t>(qty);
+        trading_cash_ += notional;
     }
-
-    position_ = new_pos;
 }
 
-double OMS::unrealized_pnl(Price current_mid) const {
-    if (position_ == 0 || avg_entry_ == 0.0) return 0.0;
-    return static_cast<double>(position_) * (current_mid - avg_entry_);
+double OMS::mark_pnl(Price current_mid) const {
+    return static_cast<double>(position_) * current_mid;
 }
 
 double OMS::total_pnl(Price current_mid) const {
-    return realized_pnl_ + unrealized_pnl(current_mid);
+    return trading_cash_ + liquidation_pnl() + mark_pnl(current_mid);
 }
 
 }  // namespace nts

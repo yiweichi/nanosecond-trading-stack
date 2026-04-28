@@ -59,7 +59,7 @@ static void run_step(PipelineState& st, const nts::MdReference& r, const nts::Md
 
     if (st.book.valid()) st.oms.set_reference_price(st.book.mid_price());
 
-    nts::Signal sig = st.strategy.on_book_update(st.book, st.oms.net_position());
+    nts::Signal sig = st.strategy.on_book_update(st.book, st.oms.net_position(), 0);
 
     if (sig != nts::Signal::None && st.book.valid()) {
         nts::Side  side  = (sig == nts::Signal::Buy) ? nts::Side::Buy : nts::Side::Sell;
@@ -88,7 +88,7 @@ static void run_step_traced(PipelineState& st, const nts::MdReference& r, const 
 
     if (st.book.valid()) st.oms.set_reference_price(st.book.mid_price());
 
-    nts::Signal sig = st.strategy.on_book_update(st.book, st.oms.net_position());
+    nts::Signal sig = st.strategy.on_book_update(st.book, st.oms.net_position(), 0);
     tracer.record(Hop::StrategyDone);
 
     if (sig != nts::Signal::None && st.book.valid()) {
@@ -152,9 +152,10 @@ int main(int argc, char* argv[]) {
     fprintf(stderr, "[bench] orders: %zu total, %zu filled, %zu cancelled, %zu rejected\n",
             state.oms.total_orders(), state.oms.total_fills(), state.oms.total_cancels(),
             state.oms.total_rejects());
-    fprintf(stderr, "[bench] position: %d, realized PnL: %.4f, total PnL: %.4f\n",
-            state.oms.net_position(), state.oms.realized_pnl(),
-            state.oms.total_pnl(state.book.mid_price()));
+    fprintf(stderr,
+            "[bench] position: %d, trading PnL: %.4f, mark PnL: %.4f, total PnL: %.4f\n",
+            state.oms.net_position(), state.oms.trading_pnl(),
+            state.oms.mark_pnl(state.book.mid_price()), state.oms.total_pnl(state.book.mid_price()));
 
     nts::instrument::StatsCalculator::print_report(tracer);
 
@@ -203,9 +204,9 @@ int main(int argc, char* argv[]) {
             fprintf(f, "orders: %zu total, %zu filled, %zu cancelled, %zu rejected\n",
                     state.oms.total_orders(), state.oms.total_fills(), state.oms.total_cancels(),
                     state.oms.total_rejects());
-            fprintf(f, "position: %d, realized PnL: %.4f, total PnL: %.4f\n\n",
-                    state.oms.net_position(), state.oms.realized_pnl(),
-                    state.oms.total_pnl(state.book.mid_price()));
+            fprintf(f, "position: %d, trading PnL: %.4f, mark PnL: %.4f, total PnL: %.4f\n\n",
+                    state.oms.net_position(), state.oms.trading_pnl(),
+                    state.oms.mark_pnl(state.book.mid_price()), state.oms.total_pnl(state.book.mid_price()));
             nts::instrument::StatsCalculator::print_report(tracer, f);
             fclose(f);
             fprintf(stderr, "  Results saved to %s\n", path.c_str());

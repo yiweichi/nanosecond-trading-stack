@@ -60,9 +60,9 @@ public:
 
     // ── Position & PnL ───────────────────────────────────────────
     int32_t net_position() const { return position_; }
-    double  avg_entry_price() const { return avg_entry_; }
-    double  realized_pnl() const { return realized_pnl_; }
-    double  unrealized_pnl(Price current_mid) const;
+    double  trading_pnl() const { return trading_cash_; }
+    double  liquidation_pnl() const { return 0.0; }
+    double  mark_pnl(Price current_mid) const;
     double  total_pnl(Price current_mid) const;
 
     // ── Statistics ───────────────────────────────────────────────
@@ -104,8 +104,7 @@ private:
     // Position
     int32_t position_               = 0;
     int32_t pending_position_delta_ = 0;  // net qty of in-flight (unfilled) orders
-    double  avg_entry_              = 0.0;
-    double  realized_pnl_           = 0.0;
+    double  trading_cash_           = 0.0;
 
     // Risk
     RiskLimits risk_;
@@ -135,7 +134,7 @@ private:
 
     size_t alloc_slot();
     void   free_slot(size_t slot, OrderId id);
-    void   update_position_on_fill(Side side, Qty qty, Price price);
+    void   apply_trading_fill(Side side, Qty qty, Price price);
 };
 
 }  // namespace nts

@@ -1,4 +1,3 @@
-#include "nts/exchange.h"
 #include "nts/instrument/clock.h"
 #include "nts/instrument/stats.h"
 #include "nts/instrument/tracer.h"
@@ -23,7 +22,6 @@ struct Args {
     uint16_t    md_port       = nts::DEFAULT_PORT;
     const char* md_group      = nts::MdReceiver::DEFAULT_MULTICAST_GROUP;
     int         duration_sec  = 10;
-    bool        live          = false;
     const char* exchange_host = "127.0.0.1";
     uint16_t    order_port    = nts::OrderGateway::DEFAULT_ORDER_PORT;
 };
@@ -31,9 +29,7 @@ struct Args {
 static Args parse_args(int argc, char* argv[]) {
     Args a;
     for (int i = 1; i < argc; i++) {
-        if (std::strcmp(argv[i], "--live") == 0) {
-            a.live = true;
-        } else if (std::strcmp(argv[i], "--exchange-host") == 0 && i + 1 < argc) {
+        if (std::strcmp(argv[i], "--exchange-host") == 0 && i + 1 < argc) {
             a.exchange_host = argv[++i];
         } else if (std::strcmp(argv[i], "--order-port") == 0 && i + 1 < argc) {
             a.order_port = static_cast<uint16_t>(std::strtol(argv[++i], nullptr, 10));
@@ -43,13 +39,6 @@ static Args parse_args(int argc, char* argv[]) {
             a.md_group = argv[++i];
         } else if (std::strcmp(argv[i], "--duration") == 0 && i + 1 < argc) {
             a.duration_sec = static_cast<int>(std::strtol(argv[++i], nullptr, 10));
-        } else {
-            // Legacy positional args: port [duration]
-            if (i == 1) {
-                a.md_port = static_cast<uint16_t>(std::strtol(argv[i], nullptr, 10));
-            } else if (i == 2) {
-                a.duration_sec = static_cast<int>(std::strtol(argv[i], nullptr, 10));
-            }
         }
     }
     return a;
@@ -79,11 +68,13 @@ static void print_trading_report(const nts::MdReceiver& md, nts::OMS& oms, const
             "[pipeline] Fills:  %zu events, %u qty (%zu buys / %u buy qty, %zu sells / %u sell qty)\n",
             oms.total_fills(), oms.total_filled_qty(), oms.total_buy_fills(), oms.total_buy_qty(),
             oms.total_sell_fills(), oms.total_sell_qty());
-    fprintf(stderr, "[pipeline] PnL:    position %+d, realized %.4f, total %.4f\n",
-            oms.net_position(), oms.realized_pnl(), oms.total_pnl(book.mid_price()));
+    fprintf(stderr,
+            "[pipeline] PnL:    realized %.4f, liquidation %.4f, total %.4f\n",
+            oms.total_pnl(book.mid_price()) - oms.liquidation_pnl(), oms.liquidation_pnl(),
+            oms.total_pnl(book.mid_price()));
 }
 
-/// Core pipeline loop — templated over the exchange type (MockExchange or OrderGateway).
+/// Core pipeline loop.
 template <typename Exchange>
 static void run_pipeline(nts::MdReceiver& md, nts::OrderBook& book,
                          nts::ImbalanceStrategy& strategy, nts::OMS& oms,
@@ -125,7 +116,7 @@ static void run_pipeline(nts::MdReceiver& md, nts::OrderBook& book,
 
             nts::Signal sig = nts::Signal::None;
             if (last_md_was_quote) {
-                sig = strategy.on_book_update(book, oms.net_position());
+                sig = strategy.on_book_update(book, oms.net_position(), msg.header.sequence_num);
             }
             tracer.record(Hop::StrategyDone);
 
@@ -182,26 +173,15 @@ int main(int argc, char* argv[]) {
 
     if (!md.init(args.md_port, args.md_group)) return 1;
 
-    if (args.live) {
-        // ── Live mode: connect to Rust exchange ──────────────────
-        nts::OrderGateway gateway;
-        if (!gateway.connect(args.exchange_host, args.order_port)) return 1;
+    nts::OrderGateway gateway;
+    if (!gateway.connect(args.exchange_host, args.order_port)) return 1;
 
-        fprintf(stderr, "[pipeline] LIVE mode — exchange=%s:%u, md=%s:%u, duration=%ds\n",
-                args.exchange_host, args.order_port, args.md_group, args.md_port, args.duration_sec);
+    fprintf(stderr, "[pipeline] LIVE mode — exchange=%s:%u, md=%s:%u, duration=%ds\n",
+            args.exchange_host, args.order_port, args.md_group, args.md_port, args.duration_sec);
 
-        run_pipeline(md, book, strategy, oms, gateway, tracer, args.duration_sec);
+    run_pipeline(md, book, strategy, oms, gateway, tracer, args.duration_sec);
 
-        gateway.close();
-    } else {
-        // ── Standalone mode: local MockExchange ──────────────────
-        nts::MockExchange exchange;
-
-        fprintf(stderr, "[pipeline] standalone mode — md=%s:%u, duration=%ds\n",
-                args.md_group, args.md_port, args.duration_sec);
-
-        run_pipeline(md, book, strategy, oms, exchange, tracer, args.duration_sec);
-    }
+    gateway.close();
 
     md.close();
 
