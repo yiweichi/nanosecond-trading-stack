@@ -64,37 +64,49 @@ bool MdReceiver::init(uint16_t port, const char* multicast_group) {
 bool MdReceiver::poll(MdMsg& msg) {
     if (sockfd_ < 0) return false;
 
-    ssize_t n = recvfrom(sockfd_, &msg, sizeof(MdMsg), 0, nullptr, nullptr);
-    if (n < 0) {
-        if (errno == EAGAIN || errno == EWOULDBLOCK) return false;
-        perror("recvfrom");
-        return false;
+    bool  got_latest = false;
+    MdMsg latest     = {};
+
+    while (true) {
+        MdMsg   candidate = {};
+        ssize_t n         = recvfrom(sockfd_, &candidate, sizeof(candidate), 0, nullptr, nullptr);
+        if (n < 0) {
+            if (errno == EAGAIN || errno == EWOULDBLOCK) break;
+            perror("recvfrom");
+            return got_latest;
+        }
+
+        if (n < static_cast<ssize_t>(sizeof(MdHeader))) continue;
+
+        bool valid = false;
+        switch (candidate.header.type) {
+            case MdMsgType::Quote:
+                valid = (n == static_cast<ssize_t>(sizeof(MdQuote)));
+                if (valid) quotes_++;
+                break;
+            case MdMsgType::Reference:
+                valid = (n == static_cast<ssize_t>(sizeof(MdReference)));
+                if (valid) references_++;
+                break;
+            default: continue;
+        }
+        if (!valid) continue;
+
+        uint32_t seq = candidate.header.sequence_num;
+        if (packets_ > 0 && seq != last_seq_ + 1) {
+            drops_ += (seq - last_seq_ - 1);
+        }
+        last_seq_ = seq;
+        packets_++;
+
+        latest     = candidate;
+        got_latest = true;
     }
 
-    if (n < static_cast<ssize_t>(sizeof(MdHeader))) return false;
-
-    bool valid = false;
-    switch (msg.header.type) {
-        case MdMsgType::Quote:
-            valid = (n == static_cast<ssize_t>(sizeof(MdQuote)));
-            if (valid) quotes_++;
-            break;
-        case MdMsgType::Reference:
-            valid = (n == static_cast<ssize_t>(sizeof(MdReference)));
-            if (valid) references_++;
-            break;
-        default: return false;
+    if (got_latest) {
+        msg = latest;
     }
-    if (!valid) return false;
-
-    uint32_t seq = msg.header.sequence_num;
-    if (packets_ > 0 && seq != last_seq_ + 1) {
-        drops_ += (seq - last_seq_ - 1);
-    }
-    last_seq_ = seq;
-    packets_++;
-
-    return true;
+    return got_latest;
 }
 
 void MdReceiver::close() {
