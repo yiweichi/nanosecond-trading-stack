@@ -68,12 +68,10 @@ static void print_trading_report(const nts::MdReceiver& ref_md, const nts::MdRec
             static_cast<unsigned long long>(ref_md.packets_dropped()),
             static_cast<unsigned long long>(ref_md.references_received()));
     fprintf(stderr,
-            "[pipeline] target MD packets: %llu recv, %llu gaps | quotes: %llu, depths: %llu, trades: %llu\n",
+            "[pipeline] target MD packets: %llu recv, %llu gaps | quotes: %llu\n",
             static_cast<unsigned long long>(target_md.packets_received()),
             static_cast<unsigned long long>(target_md.packets_dropped()),
-            static_cast<unsigned long long>(target_md.quotes_received()),
-            static_cast<unsigned long long>(target_md.depths_received()),
-            static_cast<unsigned long long>(target_md.trades_received()));
+            static_cast<unsigned long long>(target_md.quotes_received()));
     double hit_rate = (oms.total_accepted_orders() > 0)
                           ? 100.0 * static_cast<double>(oms.total_filled_orders()) /
                                 static_cast<double>(oms.total_accepted_orders())
@@ -138,8 +136,6 @@ static void run_pipeline(nts::MdReceiver& ref_md, nts::MdReceiver& target_md, nt
                         book.on_quote(target_msg.quote);
                         last_md_was_quote = true;
                         break;
-                    case nts::MdMsgType::Depth: book.on_depth(target_msg.depth); break;
-                    case nts::MdMsgType::Trade: book.on_trade(target_msg.trade); break;
                     case nts::MdMsgType::Reference: book.on_reference(target_msg.reference); break;
                 }
             }

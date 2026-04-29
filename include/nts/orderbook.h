@@ -19,8 +19,6 @@ public:
     // ── Market data updates ──────────────────────────────────────
     void on_quote(const MdQuote& q);
     void on_reference(const MdReference& r);
-    void on_depth(const MdDepth& d);
-    void on_trade(const MdTrade& t);
 
     // ── L1 access ────────────────────────────────────────────────
     Price best_bid() const;
@@ -56,13 +54,6 @@ public:
     Qty total_bid_qty(int levels = MAX_LEVELS) const;
     Qty total_ask_qty(int levels = MAX_LEVELS) const;
 
-    // ── Last trade info ──────────────────────────────────────────
-    Price    last_trade_price() const { return last_trade_price_; }
-    Qty      last_trade_qty() const { return last_trade_qty_; }
-    Side     last_trade_side() const { return last_trade_side_; }
-    uint64_t last_trade_ts() const { return last_trade_ts_; }
-    uint64_t trade_count() const { return trade_count_; }
-
     // ── Metadata ─────────────────────────────────────────────────
     uint64_t last_update_ts() const { return last_update_ts_; }
     uint64_t update_count() const { return update_count_; }
@@ -78,12 +69,6 @@ private:
 
     Price reference_mid_ = 0.0;
     bool  has_reference_ = false;
-
-    Price    last_trade_price_ = 0.0;
-    Qty      last_trade_qty_   = 0;
-    Side     last_trade_side_  = Side::Buy;
-    uint64_t last_trade_ts_    = 0;
-    uint64_t trade_count_      = 0;
 
     uint64_t last_update_ts_ = 0;
     uint64_t update_count_   = 0;

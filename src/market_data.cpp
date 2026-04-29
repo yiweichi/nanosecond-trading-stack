@@ -83,14 +83,6 @@ bool MdReceiver::poll(MdMsg& msg) {
             valid = (n == static_cast<ssize_t>(sizeof(MdReference)));
             if (valid) references_++;
             break;
-        case MdMsgType::Depth:
-            valid = (n == static_cast<ssize_t>(sizeof(MdDepth)));
-            if (valid) depths_++;
-            break;
-        case MdMsgType::Trade:
-            valid = (n == static_cast<ssize_t>(sizeof(MdTrade)));
-            if (valid) trades_++;
-            break;
         default: return false;
     }
     if (!valid) return false;

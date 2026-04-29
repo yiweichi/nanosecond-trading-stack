@@ -24,32 +24,6 @@ void OrderBook::on_reference(const MdReference& r) {
     update_count_++;
 }
 
-void OrderBook::on_depth(const MdDepth& d) {
-    bid_depth_ = std::min(static_cast<int>(d.bid_levels), MAX_LEVELS);
-    for (int i = 0; i < bid_depth_; i++) {
-        bids_[i] = {d.bids[i].price, d.bids[i].size, d.bids[i].order_count};
-    }
-
-    ask_depth_ = std::min(static_cast<int>(d.ask_levels), MAX_LEVELS);
-    for (int i = 0; i < ask_depth_; i++) {
-        asks_[i] = {d.asks[i].price, d.asks[i].size, d.asks[i].order_count};
-    }
-
-    last_update_ts_ = d.header.timestamp_ns;
-    update_count_++;
-}
-
-void OrderBook::on_trade(const MdTrade& t) {
-    last_trade_price_ = t.price;
-    last_trade_qty_   = t.size;
-    last_trade_side_  = t.aggressor_side;
-    last_trade_ts_    = t.header.timestamp_ns;
-    trade_count_++;
-
-    last_update_ts_ = t.header.timestamp_ns;
-    update_count_++;
-}
-
 // ── L1 access ────────────────────────────────────────────────────────────────
 
 Price OrderBook::best_bid() const {
@@ -170,12 +144,8 @@ void OrderBook::clear() {
     ask_depth_ = 0;
     for (auto& l : bids_) l = {};
     for (auto& l : asks_) l = {};
-    last_trade_price_ = 0.0;
-    last_trade_qty_   = 0;
-    last_trade_ts_    = 0;
     reference_mid_    = 0.0;
     has_reference_    = false;
-    trade_count_      = 0;
     last_update_ts_   = 0;
     update_count_     = 0;
 }
