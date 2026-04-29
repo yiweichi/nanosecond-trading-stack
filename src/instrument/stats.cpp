@@ -137,14 +137,6 @@ void StatsCalculator::print_report(const HopTracer& tracer, FILE* out) {
     }
     fprintf(out, "\n");
 
-    // End-to-end latency
-    fprintf(out, "End-to-End Latency (nanoseconds):\n");
-    print_header(out);
-    for (const auto& seg : end_to_end_segments()) {
-        auto stats = compute(tracer, seg.from, seg.to);
-        print_stats_line(seg.name, stats, out);
-    }
-
     fprintf(
         out,
         "\n===============================================================================\n\n");
