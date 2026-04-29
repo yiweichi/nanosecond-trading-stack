@@ -11,7 +11,7 @@ explainability**. Every nanosecond of the critical path should be accounted for.
 ## Architecture
 
 ```
-[md_generator]  ──UDP──>  [NIC]  ──>  [kernel]  ──>  [UDP socket]
+[matching-engine] ──UDP multicast──> [kernel] ──> [UDP sockets]
                                                           │
                                                     [recv buffer]
                                                           │
@@ -113,7 +113,7 @@ End-to-End:
 - [x] `instrument/tracer.h/.cpp` — hop tracer with enable/disable
 - [x] `instrument/stats.h/.cpp` — percentile computation + report
 - [x] `market_data.h/.cpp` — UDP receiver (non-blocking)
-- [x] `tools/md_generator.cpp` — UDP market data sender
+- [x] Rust matching engine — reference + quote multicast sender
 
 ### Phase 2 — Core Pipeline
 - [x] `orderbook.h/.cpp` — L1 order book
@@ -125,7 +125,7 @@ End-to-End:
 
 ### Phase 3 — Baseline Measurement
 - [ ] Run pipeline_bench, capture baseline P50/P99
-- [ ] Run full pipeline (md_generator + nts_pipeline)
+- [ ] Run full pipeline (matching-engine + nts_pipeline)
 - [ ] Record baseline numbers in BENCHMARKS.md
 
 ### Phase 4 — Optimization (one at a time, measure each)
@@ -165,11 +165,11 @@ mkdir build && cd build
 cmake .. -DCMAKE_BUILD_TYPE=Debug    # unoptimized baseline
 make -j
 
-# Terminal 1: start market data generator
-./md_generator 12345 1000
+# Terminal 1: start matching engine
+./matching-engine serve --md-port 12345 --order-port 12346
 
 # Terminal 2: run pipeline
-./nts_pipeline 12345 10
+./nts_pipeline --port 12345 --order-port 12346 --duration 10
 
 # Or run self-contained benchmark (no UDP needed)
 ./pipeline_bench 100000 10000

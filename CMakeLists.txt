@@ -35,11 +35,6 @@ add_executable(nts_pipeline src/main.cpp)
 target_link_libraries(nts_pipeline PRIVATE nts_core)
 target_compile_options(nts_pipeline PRIVATE -Wall -Wextra -Wpedantic)
 
-# Market data generator tool
-add_executable(md_generator tools/md_generator.cpp)
-target_link_libraries(md_generator PRIVATE nts_core)
-target_compile_options(md_generator PRIVATE -Wall -Wextra -Wpedantic)
-
 # Self-contained pipeline benchmark
 add_executable(pipeline_bench benchmarks/pipeline_bench.cpp)
 target_link_libraries(pipeline_bench PRIVATE nts_core)
