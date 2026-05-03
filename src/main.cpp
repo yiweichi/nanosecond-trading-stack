@@ -160,7 +160,7 @@ static void run_pipeline(nts::MdReceiver& ref_md, nts::MdReceiver& target_md, nt
     uint64_t start_ns    = nts::instrument::now_ns();
     uint64_t deadline_ns = start_ns + static_cast<uint64_t>(duration_sec) * 1'000'000'000ULL;
     uint64_t iterations  = 0;
-    MdSyncGate md_gate;
+    // MdSyncGate md_gate;
 
     while (running != 0) {
         uint64_t now = nts::instrument::now_ns();
@@ -187,8 +187,8 @@ static void run_pipeline(nts::MdReceiver& ref_md, nts::MdReceiver& target_md, nt
 
             if (got_ref_data) {
                 if (ref_msg.header.type == nts::MdMsgType::Reference) {
-                    md_gate.on_reference(ref_msg.header.exchange_tick,
-                                         ref_msg.reference.reference_mid);
+                    // md_gate.on_reference(ref_msg.header.exchange_tick,
+                    //                      ref_msg.reference.reference_mid);
                     book.on_reference(ref_msg.reference);
                     reference_updated = true;
                 }
@@ -198,14 +198,8 @@ static void run_pipeline(nts::MdReceiver& ref_md, nts::MdReceiver& target_md, nt
                 switch (target_msg.header.type) {
                     case nts::MdMsgType::Quote:
                         book.on_quote(target_msg.quote);
-                        md_gate.on_quote(target_msg.header.exchange_tick);
+                        // md_gate.on_quote(target_msg.header.exchange_tick);
                         last_md_was_quote = true;
-                        break;
-                    case nts::MdMsgType::Reference:
-                        md_gate.on_reference(target_msg.header.exchange_tick,
-                                             target_msg.reference.reference_mid);
-                        book.on_reference(target_msg.reference);
-                        reference_updated = true;
                         break;
                 }
             }
@@ -221,7 +215,7 @@ static void run_pipeline(nts::MdReceiver& ref_md, nts::MdReceiver& target_md, nt
 
             if (sig != nts::Signal::None && book.valid()) {
                 nts::Side  side  = (sig == nts::Signal::Buy) ? nts::Side::Buy : nts::Side::Sell;
-                if (md_gate.allows()) {
+                if (true) {
                     nts::Price price = (side == nts::Side::Buy) ? book.best_ask() : book.best_bid();
 
                     nts::Order* order =
