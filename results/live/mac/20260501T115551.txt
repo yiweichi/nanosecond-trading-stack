@@ -1,0 +1,31 @@
+
+===============================================================================
+              NANOSECOND TRADING STACK — LATENCY REPORT
+===============================================================================
+
+  Traces recorded: 65536 / 65536  (ring buffer wrapped, 147226 total traces)
+
+  Traces with market data:  65536
+  Traces with orders:       690
+  Traces with acks:         241
+
+Per-Hop Latency (nanoseconds):
+  Segment                                     Samples      Min      P50      P90      P99    P99.9      Max     Mean     StdDev
+  ------------------------------------------------------------------------------------------------------------------------
+  RecvStart -> RecvDone                         65536     1166     2583     3541     4208     9958   870041     2649     3510.0
+  RecvDone -> BookUpdated                       65536        0        0       41       41       41      208        7       15.7
+  BookUpdated -> StrategyDone                   65536        0        0       41       41       83      333        7       16.5
+  StrategyDone -> OrderSent                       690      875     1625     3333     6625    12000    15083     2069     1329.8
+  OrderSent -> AckReceived                        114      916     2750     4541     6916     6958    45541     3310     4177.3
+  AckReceived -> AckProcessed                     241        0        0      125      208      208      250       33       49.3
+
+
+===============================================================================
+
+
+[pipeline] stopped after 10.00 seconds, 11020789 iterations
+[pipeline] reference packets: 79695 recv, 1881195675170 gaps | refs: 79695
+[pipeline] target MD packets: 79682 recv, 1773821492782 gaps | quotes: 79682
+[pipeline] Orders: 1579 total, 1579 accepted, 354 filled, 1225 missed IOC, 0 rejected (22.4% hit)
+[pipeline] Fills:  354 events, 354 qty (159 buys / 159 buy qty, 195 sells / 195 sell qty)
+[pipeline] PnL:    realized 690.0000, liquidation 0.0000, total 690.0000

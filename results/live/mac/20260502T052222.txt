@@ -1,0 +1,31 @@
+
+===============================================================================
+              NANOSECOND TRADING STACK — LATENCY REPORT
+===============================================================================
+
+  Traces recorded: 65536 / 65536  (ring buffer wrapped, 125148 total traces)
+
+  Traces with market data:  65535
+  Traces with orders:       13772
+  Traces with acks:         59
+
+Per-Hop Latency (nanoseconds):
+  Segment                                     Samples      Min      P50      P90      P99    P99.9      Max     Mean     StdDev
+  ------------------------------------------------------------------------------------------------------------------------
+  RecvStart -> RecvDone                         65535     1416     3041    27000    40291    65166  2731416     8932    16906.4
+  RecvDone -> BookUpdated                       65535        0        0       41       41      125      375        7       16.6
+  BookUpdated -> StrategyDone                   65535        0        0       41       41      208      458        8       20.3
+  StrategyDone -> OrderSent                     13772        0     3333     5041    12625    31541   447875     3778     4518.1
+  OrderSent -> AckReceived                         22      916    12250   119375   163625   163625   274333    45526    66801.6
+  AckReceived -> AckProcessed                      59        0       41      125      291      291      583       62       92.8
+
+
+===============================================================================
+
+
+[pipeline] stopped after 100.00 seconds, 119875898 iterations
+[pipeline] reference packets: 63202 recv, 4136053522210 gaps | refs: 63202
+[pipeline] target MD packets: 62830 recv, 4136053522583 gaps | quotes: 62830
+[pipeline] Orders: 26038 total, 26036 accepted, 327 filled, 25709 missed IOC, 0 rejected (1.3% hit)
+[pipeline] Fills:  327 events, 327 qty (118 buys / 118 buy qty, 209 sells / 209 sell qty)
+[pipeline] PnL:    realized 660.0000, liquidation 0.0000, total 660.0000

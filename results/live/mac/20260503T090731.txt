@@ -1,0 +1,38 @@
+
+===============================================================================
+              NANOSECOND TRADING STACK — LATENCY REPORT
+===============================================================================
+
+  Traces recorded: 34016 / 65536
+
+  Traces with market data:  34016
+  Traces with orders:       6890
+  Traces with acks:         78
+
+Per-Hop Latency (nanoseconds):
+  Segment                                     Samples      Min      P50      P90      P99    P99.9      Max     Mean     StdDev
+  ------------------------------------------------------------------------------------------------------------------------
+  RecvStart -> RecvDone                         34016     1291     2833    12750    35916    55666   623875     6055     9358.0
+  RecvDone -> BookUpdated                       34016        0        0       41       41      125      333        6       16.4
+  BookUpdated -> StrategyDone                   34016        0        0       41       41      166      416        7       19.2
+  StrategyDone -> OrderSent                      6890        0     3666     4958    12666    24750   194416     3856     3226.5
+  OrderSent -> AckReceived                         28     1000     3833    14791    19833    19833    20166     5993     5582.3
+  AckReceived -> AckProcessed                      78        0        0       41      166      166      166       19       33.6
+
+End-to-End Latency (nanoseconds):
+  Segment                                     Samples      Min      P50      P90      P99    P99.9      Max     Mean     StdDev
+  ------------------------------------------------------------------------------------------------------------------------
+  RecvDone -> StrategyDone (core)               34016        0        0       41       83      208      416       14       24.3
+  RecvDone -> OrderSent (tick-to-order)          6890        0     3666     5000    12666    24833   194458     3873     3230.2
+  RecvStart -> OrderSent (tick-to-trade)         6890     1625     6916    17541    43458    75166   299250    10220     9377.6
+  OrderSent -> AckProcessed (exchange RT)          28     1041     3833    14791    20000    20000    20166     6008     5592.2
+
+===============================================================================
+
+
+[pipeline] stopped after 30.00 seconds, 36146449 iterations
+[pipeline] reference packets: 17248 recv, 1241245555437 gaps | refs: 16959
+[pipeline] target MD packets: 16944 recv, 1241245555741 gaps | quotes: 16944
+[pipeline] Orders: 6637 total, 6632 accepted, 19 filled, 6613 missed IOC, 0 rejected (0.3% hit)
+[pipeline] Fills:  19 events, 19 qty (7 buys / 7 buy qty, 12 sells / 12 sell qty)
+[pipeline] PnL:    realized 24.0000, liquidation 0.0000, total 24.0000

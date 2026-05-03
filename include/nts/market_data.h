@@ -14,12 +14,13 @@ enum class MdMsgType : uint8_t {
 
 struct MdHeader {
     uint64_t  timestamp_ns;
+    uint64_t  exchange_tick;
     uint32_t  instrument_id;
     uint32_t  sequence_num;
     MdMsgType type;
     uint8_t   _pad[7];
 };
-static_assert(sizeof(MdHeader) == 24, "MdHeader layout mismatch");
+static_assert(sizeof(MdHeader) == 32, "MdHeader layout mismatch");
 
 struct MdQuote {
     MdHeader header;
@@ -28,14 +29,14 @@ struct MdQuote {
     Qty      bid_size;
     Qty      ask_size;
 };
-static_assert(sizeof(MdQuote) == 48, "MdQuote layout mismatch");
+static_assert(sizeof(MdQuote) == 56, "MdQuote layout mismatch");
 
 struct MdReference {
     MdHeader header;
     double   reference_mid;
     uint8_t  _pad[8];
 };
-static_assert(sizeof(MdReference) == 40, "MdReference layout mismatch");
+static_assert(sizeof(MdReference) == 48, "MdReference layout mismatch");
 
 // Union for receiving any message type over UDP.
 union MdMsg {
