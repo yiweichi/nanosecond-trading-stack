@@ -26,6 +26,32 @@ static void on_signal(int) {
     while (nts::instrument::now_ns() - start < delay_ns) {}
 }
 
+static constexpr uint64_t STALE_QUOTE_WINDOW_TICKS      = 10;
+
+class MdSyncGate {
+public:
+    void on_reference(uint64_t tick, nts::Price reference_mid) {
+        if (reference_mid != last_reference_mid_) {
+            reference_change_tick_ = tick;
+        }
+        last_reference_mid_ = reference_mid;
+    }
+
+    void on_quote(uint64_t tick) {
+        quote_tick_ = tick;
+    }
+
+    bool allows() const {
+        return quote_tick_ >= reference_change_tick_ &&
+            quote_tick_ < reference_change_tick_ + STALE_QUOTE_WINDOW_TICKS;
+    }
+
+private:
+    uint64_t   quote_tick_            = 0;
+    uint64_t   reference_change_tick_ = 0;
+    nts::Price last_reference_mid_    = 0.0;
+};
+
 struct Args {
     uint16_t    md_port       = nts::DEFAULT_PORT;
     const char* md_group      = nts::MdReceiver::DEFAULT_MULTICAST_GROUP;
@@ -134,6 +160,7 @@ static void run_pipeline(nts::MdReceiver& ref_md, nts::MdReceiver& target_md, nt
     uint64_t start_ns    = nts::instrument::now_ns();
     uint64_t deadline_ns = start_ns + static_cast<uint64_t>(duration_sec) * 1'000'000'000ULL;
     uint64_t iterations  = 0;
+    MdSyncGate md_gate;
 
     while (running != 0) {
         uint64_t now = nts::instrument::now_ns();
@@ -156,10 +183,12 @@ static void run_pipeline(nts::MdReceiver& ref_md, nts::MdReceiver& target_md, nt
         if (got_data) {
             tracer.record(Hop::RecvDone);
 
-            // spin_for_ns(0);
+            // spin_for_ns(50000);
 
             if (got_ref_data) {
                 if (ref_msg.header.type == nts::MdMsgType::Reference) {
+                    md_gate.on_reference(ref_msg.header.exchange_tick,
+                                         ref_msg.reference.reference_mid);
                     book.on_reference(ref_msg.reference);
                     reference_updated = true;
                 }
@@ -169,9 +198,15 @@ static void run_pipeline(nts::MdReceiver& ref_md, nts::MdReceiver& target_md, nt
                 switch (target_msg.header.type) {
                     case nts::MdMsgType::Quote:
                         book.on_quote(target_msg.quote);
+                        md_gate.on_quote(target_msg.header.exchange_tick);
                         last_md_was_quote = true;
                         break;
-                    case nts::MdMsgType::Reference: book.on_reference(target_msg.reference); break;
+                    case nts::MdMsgType::Reference:
+                        md_gate.on_reference(target_msg.header.exchange_tick,
+                                             target_msg.reference.reference_mid);
+                        book.on_reference(target_msg.reference);
+                        reference_updated = true;
+                        break;
                 }
             }
             tracer.record(Hop::BookUpdated);
@@ -186,13 +221,16 @@ static void run_pipeline(nts::MdReceiver& ref_md, nts::MdReceiver& target_md, nt
 
             if (sig != nts::Signal::None && book.valid()) {
                 nts::Side  side  = (sig == nts::Signal::Buy) ? nts::Side::Buy : nts::Side::Sell;
-                nts::Price price = (side == nts::Side::Buy) ? book.best_ask() : book.best_bid();
+                if (md_gate.allows()) {
+                    nts::Price price = (side == nts::Side::Buy) ? book.best_ask() : book.best_bid();
 
-                nts::Order* order = oms.send_new(side, price, strategy.order_size(), nts::OrderType::IOC);
-                if (order != nullptr) {
-                    exchange.submit_order(*order);
+                    nts::Order* order =
+                        oms.send_new(side, price, strategy.order_size(), nts::OrderType::IOC);
+                    if (order != nullptr) {
+                        exchange.submit_order(*order);
+                    }
+                    tracer.record(Hop::OrderSent);
                 }
-                tracer.record(Hop::OrderSent);
             }
 
             nts::ExecutionReport exec;

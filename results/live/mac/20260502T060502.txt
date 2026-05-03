@@ -1,0 +1,31 @@
+
+===============================================================================
+              NANOSECOND TRADING STACK — LATENCY REPORT
+===============================================================================
+
+  Traces recorded: 65536 / 65536  (ring buffer wrapped, 119902 total traces)
+
+  Traces with market data:  65535
+  Traces with orders:       788
+  Traces with acks:         14
+
+Per-Hop Latency (nanoseconds):
+  Segment                                     Samples      Min      P50      P90      P99    P99.9      Max     Mean     StdDev
+  ------------------------------------------------------------------------------------------------------------------------
+  RecvStart -> RecvDone                         65535     1500     2875    22041    40875    59166  2423708     7596    16660.3
+  RecvDone -> BookUpdated                       65535        0        0       41       41      166      916        7       18.8
+  BookUpdated -> StrategyDone                   65535        0        0       41       41      208      375        8       19.9
+  StrategyDone -> OrderSent                       788     1458     5625    13541    21125    40333    43375     7467     4936.9
+  OrderSent -> AckReceived                          6     3666     5625    10333    10333    10333    13000     7583     3262.3
+  AckReceived -> AckProcessed                      14        0      166      250      250      250      250      160       87.6
+
+
+===============================================================================
+
+
+[pipeline] stopped after 100.00 seconds, 115083430 iterations
+[pipeline] reference packets: 60843 recv, 4196179599247 gaps | refs: 60843
+[pipeline] target MD packets: 60301 recv, 4166114828717 gaps | quotes: 60301
+[pipeline] Orders: 1405 total, 1404 accepted, 275 filled, 1129 missed IOC, 0 rejected (19.6% hit)
+[pipeline] Fills:  275 events, 275 qty (120 buys / 120 buy qty, 155 sells / 155 sell qty)
+[pipeline] PnL:    realized 428.0000, liquidation 0.0000, total 428.0000
