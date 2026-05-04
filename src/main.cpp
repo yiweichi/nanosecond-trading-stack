@@ -27,6 +27,7 @@ static void on_signal(int) {
 }
 
 static constexpr uint64_t STALE_QUOTE_WINDOW_TICKS      = 10;
+static constexpr nts::Price EXIT_HALF_SPREAD            = 1.0;
 
 class MdSyncGate {
 public:
@@ -51,6 +52,24 @@ private:
     uint64_t   reference_change_tick_ = 0;
     nts::Price last_reference_mid_    = 0.0;
 };
+
+static bool build_exit_order(const nts::OrderBook& book, int32_t position, nts::Side& side,
+                             nts::Price& price, nts::Qty& qty) {
+    if (position == 0 || !book.valid() || !book.has_reference()) return false;
+
+    const nts::Price reference = book.reference_mid();
+    if (position > 0) {
+        side  = nts::Side::Sell;
+        price = book.best_bid();
+        qty   = static_cast<nts::Qty>(position);
+        return price >= reference - EXIT_HALF_SPREAD;
+    }
+
+    side  = nts::Side::Buy;
+    price = book.best_ask();
+    qty   = static_cast<nts::Qty>(-position);
+    return price <= reference + EXIT_HALF_SPREAD;
+}
 
 struct Args {
     uint16_t    md_port       = nts::DEFAULT_PORT;
@@ -201,6 +220,7 @@ static void run_pipeline(nts::MdReceiver& ref_md, nts::MdReceiver& target_md, nt
                         // md_gate.on_quote(target_msg.header.exchange_tick);
                         last_md_was_quote = true;
                         break;
+                    case nts::MdMsgType::Reference: break;
                 }
             }
             tracer.record(Hop::BookUpdated);
@@ -208,23 +228,36 @@ static void run_pipeline(nts::MdReceiver& ref_md, nts::MdReceiver& target_md, nt
             if (book.valid()) oms.set_reference_price(book.mid_price());
 
             nts::Signal sig = nts::Signal::None;
-            if (reference_updated || last_md_was_quote) {
-                sig = strategy.on_book_update(book, oms.net_position());
+            int32_t position = oms.net_position();
+            bool    has_pending_order = oms.pending_count() > 0;
+
+            nts::Side  exit_side  = nts::Side::Buy;
+            nts::Price exit_price = 0.0;
+            nts::Qty   exit_qty   = 0;
+            bool should_exit =
+                !has_pending_order && build_exit_order(book, position, exit_side, exit_price, exit_qty);
+            if (!should_exit && !has_pending_order && (reference_updated || last_md_was_quote)) {
+                sig = strategy.on_book_update(book, position);
             }
             tracer.record(Hop::StrategyDone);
 
-            if (sig != nts::Signal::None && book.valid()) {
-                nts::Side  side  = (sig == nts::Signal::Buy) ? nts::Side::Buy : nts::Side::Sell;
-                if (true) {
-                    nts::Price price = (side == nts::Side::Buy) ? book.best_ask() : book.best_bid();
-
-                    nts::Order* order =
-                        oms.send_new(side, price, strategy.order_size(), nts::OrderType::IOC);
-                    if (order != nullptr) {
-                        exchange.submit_order(*order);
-                    }
+            if (should_exit) {
+                nts::Order* order =
+                    oms.send_new(exit_side, exit_price, exit_qty, nts::OrderType::IOC);
+                if (order != nullptr) {
+                    exchange.submit_order(*order);
                     tracer.record(Hop::OrderSent);
                 }
+            } else if (sig != nts::Signal::None && book.valid()) {
+                nts::Side  side  = (sig == nts::Signal::Buy) ? nts::Side::Buy : nts::Side::Sell;
+                nts::Price price = (side == nts::Side::Buy) ? book.best_ask() : book.best_bid();
+
+                nts::Order* order =
+                    oms.send_new(side, price, strategy.order_size(), nts::OrderType::IOC);
+                if (order != nullptr) {
+                    exchange.submit_order(*order);
+                }
+                tracer.record(Hop::OrderSent);
             }
 
             nts::ExecutionReport exec;
