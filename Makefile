@@ -13,6 +13,7 @@
 #   make fmt          Format all C++ sources with clang-format
 #   make fmt-check    Dry-run format check (CI-friendly, fails on diff)
 #   make lint         Run clang-tidy on all sources
+#   make pr           Run local pre-PR checks (format, lint, build, tests)
 #
 # The pipeline requires two terminals:
 #   Terminal 1:  make gen
@@ -33,12 +34,15 @@ ORDER_PORT  ?= 12346
 MD_GROUP    ?= 239.1.1.1
 DURATION    ?= 10
 RATE        ?= 5000
+CLANG_FORMAT ?= clang-format
+CLANG_TIDY   ?= clang-tidy
+CARGO        ?= cargo
 
 SRCS := $(shell find src -name '*.cpp') $(shell find benchmarks -name '*.cpp')
 HDRS := $(shell find include -name '*.h')
 ALL_FILES := $(SRCS) $(HDRS)
 
-.PHONY: debug release clean bench match-bench match-scenario match-profile run trade gen fmt fmt-check lint
+.PHONY: debug release clean bench match-bench match-scenario match-profile run trade gen fmt fmt-check lint rust-fmt-check rust-clippy rust-test rust-pr pr
 
 release:
 	@mkdir -p $(BUILD_DIR) && cd $(BUILD_DIR) && cmake .. -DCMAKE_BUILD_TYPE=Release && make -j
@@ -74,11 +78,13 @@ gen: release
 	@./$(BUILD_DIR)/md_generator $(PORT) $(RATE)
 
 fmt:
-	@clang-format -i $(ALL_FILES)
+	@$(CLANG_FORMAT) -i $(ALL_FILES)
 	@echo "Formatted $$(echo $(ALL_FILES) | wc -w | tr -d ' ') files."
 
 fmt-check:
-	@clang-format --dry-run -Werror $(ALL_FILES)
+	@$(CLANG_FORMAT) --dry-run -Werror $(ALL_FILES)
 
 lint: release
-	@clang-tidy $(SRCS) -- -Iinclude -std=c++17
+	@$(CLANG_TIDY) $(SRCS) -- -Iinclude -std=c++17
+
+pr: fmt-check lint

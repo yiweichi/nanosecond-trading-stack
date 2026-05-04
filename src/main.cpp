@@ -7,13 +7,13 @@
 #include "nts/orderbook.h"
 #include "nts/strategy.h"
 
+#include <sys/stat.h>
 #include <csignal>
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
 #include <ctime>
 #include <string>
-#include <sys/stat.h>
 
 static volatile sig_atomic_t running = 1;
 
@@ -26,8 +26,8 @@ static void on_signal(int) {
     while (nts::instrument::now_ns() - start < delay_ns) {}
 }
 
-static constexpr uint64_t STALE_QUOTE_WINDOW_TICKS      = 10;
-static constexpr nts::Price EXIT_HALF_SPREAD            = 1.0;
+static constexpr uint64_t   STALE_QUOTE_WINDOW_TICKS = 10;
+static constexpr nts::Price EXIT_HALF_SPREAD         = 1.0;
 
 class MdSyncGate {
 public:
@@ -38,13 +38,11 @@ public:
         last_reference_mid_ = reference_mid;
     }
 
-    void on_quote(uint64_t tick) {
-        quote_tick_ = tick;
-    }
+    void on_quote(uint64_t tick) { quote_tick_ = tick; }
 
     bool allows() const {
         return quote_tick_ >= reference_change_tick_ &&
-            quote_tick_ < reference_change_tick_ + STALE_QUOTE_WINDOW_TICKS;
+               quote_tick_ < reference_change_tick_ + STALE_QUOTE_WINDOW_TICKS;
     }
 
 private:
@@ -128,27 +126,25 @@ static void mkdirs(const std::string& path) {
 }
 
 static std::string utc_timestamp() {
-    time_t now = time(nullptr);
+    time_t    now = time(nullptr);
     struct tm t;
     gmtime_r(&now, &t);
     char ts[32];
-    snprintf(ts, sizeof(ts), "%04d%02d%02dT%02d%02d%02d", t.tm_year + 1900, t.tm_mon + 1,
-             t.tm_mday, t.tm_hour, t.tm_min, t.tm_sec);
+    snprintf(ts, sizeof(ts), "%04d%02d%02dT%02d%02d%02d", t.tm_year + 1900, t.tm_mon + 1, t.tm_mday,
+             t.tm_hour, t.tm_min, t.tm_sec);
     return ts;
 }
 
 static void print_trading_report(const nts::MdReceiver& ref_md, const nts::MdReceiver& target_md,
-                                 nts::OMS& oms, const nts::OrderBook& book,
-                                 double elapsed_s, uint64_t iterations, FILE* out = stderr) {
+                                 nts::OMS& oms, const nts::OrderBook& book, double elapsed_s,
+                                 uint64_t iterations, FILE* out = stderr) {
     fprintf(out, "\n[pipeline] stopped after %.2f seconds, %llu iterations\n", elapsed_s,
             static_cast<unsigned long long>(iterations));
-    fprintf(out,
-            "[pipeline] reference packets: %llu recv, %llu gaps | refs: %llu\n",
+    fprintf(out, "[pipeline] reference packets: %llu recv, %llu gaps | refs: %llu\n",
             static_cast<unsigned long long>(ref_md.packets_received()),
             static_cast<unsigned long long>(ref_md.packets_dropped()),
             static_cast<unsigned long long>(ref_md.references_received()));
-    fprintf(out,
-            "[pipeline] target MD packets: %llu recv, %llu gaps | quotes: %llu\n",
+    fprintf(out, "[pipeline] target MD packets: %llu recv, %llu gaps | quotes: %llu\n",
             static_cast<unsigned long long>(target_md.packets_received()),
             static_cast<unsigned long long>(target_md.packets_dropped()),
             static_cast<unsigned long long>(target_md.quotes_received()));
@@ -157,15 +153,16 @@ static void print_trading_report(const nts::MdReceiver& ref_md, const nts::MdRec
                                 static_cast<double>(oms.total_accepted_orders())
                           : 0.0;
     fprintf(out,
-            "[pipeline] Orders: %zu total, %zu accepted, %zu filled, %zu missed IOC, %zu rejected (%.1f%% hit)\n",
+            "[pipeline] Orders: %zu total, %zu accepted, %zu filled, %zu missed IOC, %zu rejected "
+            "(%.1f%% hit)\n",
             oms.total_orders(), oms.total_accepted_orders(), oms.total_filled_orders(),
             oms.total_missed_ioc(), oms.total_rejects(), hit_rate);
-    fprintf(out,
-            "[pipeline] Fills:  %zu events, %u qty (%zu buys / %u buy qty, %zu sells / %u sell qty)\n",
-            oms.total_fills(), oms.total_filled_qty(), oms.total_buy_fills(), oms.total_buy_qty(),
-            oms.total_sell_fills(), oms.total_sell_qty());
-    fprintf(out,
-            "[pipeline] PnL:    realized %.4f, liquidation %.4f, total %.4f\n",
+    fprintf(
+        out,
+        "[pipeline] Fills:  %zu events, %u qty (%zu buys / %u buy qty, %zu sells / %u sell qty)\n",
+        oms.total_fills(), oms.total_filled_qty(), oms.total_buy_fills(), oms.total_buy_qty(),
+        oms.total_sell_fills(), oms.total_sell_qty());
+    fprintf(out, "[pipeline] PnL:    realized %.4f, liquidation %.4f, total %.4f\n",
             oms.total_pnl(book.mid_price()) - oms.liquidation_pnl(), oms.liquidation_pnl(),
             oms.total_pnl(book.mid_price()));
 }
@@ -173,9 +170,8 @@ static void print_trading_report(const nts::MdReceiver& ref_md, const nts::MdRec
 /// Core pipeline loop.
 template <typename Exchange>
 static void run_pipeline(nts::MdReceiver& ref_md, nts::MdReceiver& target_md, nts::OrderBook& book,
-                         nts::ImbalanceStrategy& strategy, nts::OMS& oms,
-                         Exchange& exchange, nts::instrument::HopTracer& tracer,
-                         int duration_sec, bool save_report) {
+                         nts::ImbalanceStrategy& strategy, nts::OMS& oms, Exchange& exchange,
+                         nts::instrument::HopTracer& tracer, int duration_sec, bool save_report) {
     uint64_t start_ns    = nts::instrument::now_ns();
     uint64_t deadline_ns = start_ns + static_cast<uint64_t>(duration_sec) * 1'000'000'000ULL;
     uint64_t iterations  = 0;
@@ -227,15 +223,15 @@ static void run_pipeline(nts::MdReceiver& ref_md, nts::MdReceiver& target_md, nt
 
             if (book.valid()) oms.set_reference_price(book.mid_price());
 
-            nts::Signal sig = nts::Signal::None;
-            int32_t position = oms.net_position();
-            bool    has_pending_order = oms.pending_count() > 0;
+            nts::Signal sig               = nts::Signal::None;
+            int32_t     position          = oms.net_position();
+            bool        has_pending_order = oms.pending_count() > 0;
 
             nts::Side  exit_side  = nts::Side::Buy;
             nts::Price exit_price = 0.0;
             nts::Qty   exit_qty   = 0;
-            bool should_exit =
-                !has_pending_order && build_exit_order(book, position, exit_side, exit_price, exit_qty);
+            bool should_exit = !has_pending_order &&
+                               build_exit_order(book, position, exit_side, exit_price, exit_qty);
             if (!should_exit && !has_pending_order && (reference_updated || last_md_was_quote)) {
                 sig = strategy.on_book_update(book, position);
             }
@@ -322,8 +318,7 @@ int main(int argc, char* argv[]) {
     nts::OrderGateway gateway;
     if (!gateway.connect(args.exchange_host, args.order_port)) return 1;
 
-    fprintf(stderr,
-            "[pipeline] LIVE mode — exchange=%s:%u, ref=%s:%u, md=%s:%u, duration=%ds\n",
+    fprintf(stderr, "[pipeline] LIVE mode — exchange=%s:%u, ref=%s:%u, md=%s:%u, duration=%ds\n",
             args.exchange_host, args.order_port, args.ref_group, args.ref_port, args.md_group,
             args.md_port, args.duration_sec);
 

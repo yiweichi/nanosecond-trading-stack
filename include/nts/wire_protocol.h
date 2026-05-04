@@ -20,9 +20,9 @@ constexpr uint32_t DEFAULT_INSTRUMENT = 1;
 // ── Order message: C++ HFT -> Rust Exchange (via TCP) ────────────────────────
 
 struct WireOrderMsg {
-    uint8_t  msg_type;          // ORDER_MSG_NEW
-    uint8_t  side;              // 0 = Buy, 1 = Sell
-    uint8_t  order_type;        // 1 = Market, 2 = IOC limit
+    uint8_t  msg_type;    // ORDER_MSG_NEW
+    uint8_t  side;        // 0 = Buy, 1 = Sell
+    uint8_t  order_type;  // 1 = Market, 2 = IOC limit
     uint8_t  _pad1[5];
     uint64_t client_order_id;
     double   price;
@@ -34,8 +34,8 @@ static_assert(sizeof(WireOrderMsg) == 32, "WireOrderMsg layout mismatch");
 // ── Execution report: Rust Exchange -> C++ HFT (via TCP) ─────────────────────
 
 struct WireExecReport {
-    uint8_t  exec_type;         // matches nts::ExecType values (0-5)
-    uint8_t  side;              // 0 = Buy, 1 = Sell
+    uint8_t  exec_type;  // matches nts::ExecType values (0-5)
+    uint8_t  side;       // 0 = Buy, 1 = Sell
     uint8_t  _pad1[2];
     uint32_t fill_qty;
     uint64_t order_id;

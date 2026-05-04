@@ -62,8 +62,8 @@ void OrderGateway::submit_order(const Order& order) {
     msg.price           = order.price;
     msg.qty             = order.qty;
 
-    const uint8_t* data = reinterpret_cast<const uint8_t*>(&msg);
-    size_t         left = sizeof(msg);
+    auto   data = reinterpret_cast<const uint8_t*>(&msg);
+    size_t left = sizeof(msg);
     while (left > 0) {
         ssize_t n = ::send(sockfd_, data, left, MSG_NOSIGNAL);
         if (n > 0) {

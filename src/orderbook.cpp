@@ -18,8 +18,8 @@ void OrderBook::on_quote(const MdQuote& q) {
 }
 
 void OrderBook::on_reference(const MdReference& r) {
-    reference_mid_ = r.reference_mid;
-    has_reference_ = true;
+    reference_mid_  = r.reference_mid;
+    has_reference_  = true;
     last_update_ts_ = r.header.timestamp_ns;
     update_count_++;
 }
@@ -144,10 +144,10 @@ void OrderBook::clear() {
     ask_depth_ = 0;
     for (auto& l : bids_) l = {};
     for (auto& l : asks_) l = {};
-    reference_mid_    = 0.0;
-    has_reference_    = false;
-    last_update_ts_   = 0;
-    update_count_     = 0;
+    reference_mid_  = 0.0;
+    has_reference_  = false;
+    last_update_ts_ = 0;
+    update_count_   = 0;
 }
 
 }  // namespace nts

@@ -8,7 +8,7 @@ namespace nts {
 static constexpr int MD_MAX_DEPTH = 10;
 
 enum class MdMsgType : uint8_t {
-    Quote = 1,
+    Quote     = 1,
     Reference = 4,
 };
 
@@ -59,7 +59,7 @@ public:
     uint64_t references_received() const { return references_; }
 
 private:
-    int      sockfd_   = -1;
+    int      sockfd_     = -1;
     uint64_t packets_    = 0;
     uint64_t drops_      = 0;
     uint64_t quotes_     = 0;

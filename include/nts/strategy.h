@@ -24,7 +24,7 @@ public:
 
 private:
     StrategyParams params_;
-    uint64_t       signals_             = 0;
+    uint64_t       signals_ = 0;
 };
 
 }  // namespace nts
