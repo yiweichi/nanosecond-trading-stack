@@ -2,6 +2,7 @@
 #include "nts/instrument/stats.h"
 #include "nts/instrument/tracer.h"
 #include "nts/market_data.h"
+#include "nts/md_sync_gate.h"
 #include "nts/oms.h"
 #include "nts/order_gateway.h"
 #include "nts/orderbook.h"
@@ -26,30 +27,7 @@ static void on_signal(int) {
     while (nts::instrument::now_ns() - start < delay_ns) {}
 }
 
-static constexpr uint64_t   STALE_QUOTE_WINDOW_TICKS = 10;
-static constexpr nts::Price EXIT_HALF_SPREAD         = 1.0;
-
-class MdSyncGate {
-public:
-    void on_reference(uint64_t tick, nts::Price reference_mid) {
-        if (reference_mid != last_reference_mid_) {
-            reference_change_tick_ = tick;
-        }
-        last_reference_mid_ = reference_mid;
-    }
-
-    void on_quote(uint64_t tick) { quote_tick_ = tick; }
-
-    bool allows() const {
-        return quote_tick_ >= reference_change_tick_ &&
-               quote_tick_ < reference_change_tick_ + STALE_QUOTE_WINDOW_TICKS;
-    }
-
-private:
-    uint64_t   quote_tick_            = 0;
-    uint64_t   reference_change_tick_ = 0;
-    nts::Price last_reference_mid_    = 0.0;
-};
+static constexpr nts::Price EXIT_HALF_SPREAD = 1.0;
 
 static bool build_exit_order(const nts::OrderBook& book, int32_t position, nts::Side& side,
                              nts::Price& price, nts::Qty& qty) {
@@ -175,7 +153,7 @@ static void run_pipeline(nts::MdReceiver& ref_md, nts::MdReceiver& target_md, nt
     uint64_t start_ns    = nts::instrument::now_ns();
     uint64_t deadline_ns = start_ns + static_cast<uint64_t>(duration_sec) * 1'000'000'000ULL;
     uint64_t iterations  = 0;
-    // MdSyncGate md_gate;
+    // nts::MdSyncGate md_gate;
 
     while (running != 0) {
         uint64_t now = nts::instrument::now_ns();
