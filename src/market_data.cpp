@@ -65,11 +65,13 @@ bool MdReceiver::poll(MdMsg& msg) {
     if (sockfd_ < 0) return false;
 
     bool  got_latest = false;
-    MdMsg latest     = {};
+    MdMsg latest;
+    std::memset(&latest, 0, sizeof(latest));
 
     while (true) {
-        MdMsg   candidate = {};
-        ssize_t n         = recvfrom(sockfd_, &candidate, sizeof(candidate), 0, nullptr, nullptr);
+        MdMsg candidate;
+        std::memset(&candidate, 0, sizeof(candidate));
+        ssize_t n = recvfrom(sockfd_, &candidate, sizeof(candidate), 0, nullptr, nullptr);
         if (n < 0) {
             if (errno == EAGAIN || errno == EWOULDBLOCK) break;
             perror("recvfrom");

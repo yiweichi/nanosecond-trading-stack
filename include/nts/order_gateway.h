@@ -22,9 +22,9 @@ public:
 private:
     int sockfd_ = -1;
 
-    static constexpr size_t BUF_SIZE = 4096;
-    uint8_t read_buf_[BUF_SIZE] = {};
-    size_t  read_len_            = 0;
+    static constexpr size_t BUF_SIZE            = 4096;
+    uint8_t                 read_buf_[BUF_SIZE] = {};
+    size_t                  read_len_           = 0;
 };
 
 }  // namespace nts
