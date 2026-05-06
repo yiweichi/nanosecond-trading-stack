@@ -1,0 +1,31 @@
+
+===============================================================================
+              NANOSECOND TRADING STACK — LATENCY REPORT
+===============================================================================
+
+  Traces recorded: 3353 / 65536
+
+  Traces with market data:  3353
+  Traces with orders:       228
+  Traces with acks:         2
+
+Per-Hop Latency (nanoseconds):
+  Segment                                     Samples      Min      P50      P90      P99    P99.9      Max     Mean     StdDev
+  ------------------------------------------------------------------------------------------------------------------------
+  RecvStart -> RecvDone                          3353     1416     3500    35541    51833    71083   228958    13914    15269.0
+  RecvDone -> BookUpdated                        3353        0        0       41      125      250     2333       11       48.3
+  BookUpdated -> StrategyDone                    3353        0        0       41      208      291      666       14       37.2
+  StrategyDone -> OrderSent                       228     2375     6500    13583    18250    52208    52416     8240     5765.2
+  OrderSent -> AckReceived                   (no data)
+  AckReceived -> AckProcessed                       2      291      291      291      291      291      541      416      125.0
+
+
+===============================================================================
+
+
+[pipeline] stopped after 30.00 seconds, 37082898 iterations
+[pipeline] reference packets: 1692 recv, 1232655598450 gaps | refs: 1692
+[pipeline] target MD packets: 1687 recv, 1232655598455 gaps | quotes: 1687
+[pipeline] Orders: 228 total, 228 accepted, 50 filled, 178 missed IOC, 0 rejected (21.9% hit)
+[pipeline] Fills:  50 events, 65 qty (27 buys / 34 buy qty, 23 sells / 31 sell qty)
+[pipeline] PnL:    realized -102.5000, liquidation 0.0000, total -102.5000
