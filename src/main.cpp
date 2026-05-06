@@ -153,7 +153,6 @@ static void run_pipeline(nts::MdReceiver& ref_md, nts::MdReceiver& target_md, nt
     uint64_t        start_ns    = nts::instrument::now_ns();
     uint64_t        deadline_ns = start_ns + static_cast<uint64_t>(duration_sec) * 1'000'000'000ULL;
     uint64_t        iterations  = 0;
-    nts::MdSyncGate md_gate;
 
     while (running != 0) {
         uint64_t now = nts::instrument::now_ns();
@@ -180,8 +179,6 @@ static void run_pipeline(nts::MdReceiver& ref_md, nts::MdReceiver& target_md, nt
 
             if (got_ref_data) {
                 if (ref_msg.header.type == nts::MdMsgType::Reference) {
-                    md_gate.on_reference(ref_msg.header.exchange_tick,
-                                         ref_msg.reference.reference_mid);
                     book.on_reference(ref_msg.reference);
                     reference_updated = true;
                 }
@@ -191,7 +188,6 @@ static void run_pipeline(nts::MdReceiver& ref_md, nts::MdReceiver& target_md, nt
                 switch (target_msg.header.type) {
                     case nts::MdMsgType::Quote:
                         book.on_quote(target_msg.quote);
-                        md_gate.on_quote(target_msg.header.exchange_tick);
                         last_md_was_quote = true;
                         break;
                     case nts::MdMsgType::Reference: break;
@@ -204,14 +200,13 @@ static void run_pipeline(nts::MdReceiver& ref_md, nts::MdReceiver& target_md, nt
             nts::Signal sig               = nts::Signal::None;
             int32_t     position          = oms.net_position();
             bool        has_pending_order = oms.pending_count() > 0;
-            bool        md_sync_allowed   = md_gate.allows();
 
             nts::Side  exit_side  = nts::Side::Buy;
             nts::Price exit_price = 0.0;
             nts::Qty   exit_qty   = 0;
-            bool should_exit = md_sync_allowed && !has_pending_order &&
+            bool should_exit = !has_pending_order &&
                                build_exit_order(book, position, exit_side, exit_price, exit_qty);
-            if (position == 0 && !should_exit && md_sync_allowed && !has_pending_order &&
+            if (position == 0 && !should_exit && !has_pending_order &&
                 (reference_updated || last_md_was_quote)) {
                 sig = strategy.on_book_update(book, position);
             }
