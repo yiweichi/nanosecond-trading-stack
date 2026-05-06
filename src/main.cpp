@@ -150,9 +150,9 @@ template <typename Exchange>
 static void run_pipeline(nts::MdReceiver& ref_md, nts::MdReceiver& target_md, nts::OrderBook& book,
                          nts::ImbalanceStrategy& strategy, nts::OMS& oms, Exchange& exchange,
                          nts::instrument::HopTracer& tracer, int duration_sec, bool save_report) {
-    uint64_t        start_ns    = nts::instrument::now_ns();
-    uint64_t        deadline_ns = start_ns + static_cast<uint64_t>(duration_sec) * 1'000'000'000ULL;
-    uint64_t        iterations  = 0;
+    uint64_t start_ns    = nts::instrument::now_ns();
+    uint64_t deadline_ns = start_ns + static_cast<uint64_t>(duration_sec) * 1'000'000'000ULL;
+    uint64_t iterations  = 0;
 
     while (running != 0) {
         uint64_t now = nts::instrument::now_ns();
