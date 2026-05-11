@@ -15,6 +15,7 @@
 #include <cstring>
 #include <ctime>
 #include <string>
+#include <unordered_map>
 
 static volatile sig_atomic_t running = 1;
 
@@ -154,6 +155,49 @@ static void run_pipeline(nts::MdReceiver& ref_md, nts::MdReceiver& target_md, nt
     uint64_t deadline_ns = start_ns + static_cast<uint64_t>(duration_sec) * 1'000'000'000ULL;
     uint64_t iterations  = 0;
 
+    std::unordered_map<nts::OrderId, uint64_t> order_sent_ticks;
+    std::unordered_map<nts::OrderId, uint64_t> ack_received_ticks;
+    order_sent_ticks.reserve(nts::OMS::MAX_ORDERS);
+    ack_received_ticks.reserve(nts::OMS::MAX_ORDERS);
+
+    auto record_submitted_order = [&](const nts::Order& order) {
+        const uint64_t sent_ticks = nts::instrument::raw_ticks();
+        tracer.record_at(nts::instrument::Hop::OrderSent, sent_ticks);
+        order_sent_ticks[order.id] = sent_ticks;
+    };
+
+    auto process_execution = [&](const nts::ExecutionReport& exec) {
+        const uint64_t report_received_ticks = nts::instrument::raw_ticks();
+        auto           sent_it               = order_sent_ticks.find(exec.order_id);
+        auto           ack_it                = ack_received_ticks.find(exec.order_id);
+
+        oms.on_execution(exec);
+
+        const uint64_t report_processed_ticks = nts::instrument::raw_ticks();
+        switch (exec.exec_type) {
+            case nts::ExecType::NewAck:
+                if (sent_it != order_sent_ticks.end()) {
+                    tracer.record_order_ack(sent_it->second, report_received_ticks,
+                                            report_processed_ticks);
+                    order_sent_ticks.erase(sent_it);
+                    ack_received_ticks[exec.order_id] = report_received_ticks;
+                }
+                break;
+            case nts::ExecType::Fill:
+            case nts::ExecType::PartialFill:
+            case nts::ExecType::Reject:
+            case nts::ExecType::CancelAck:
+            case nts::ExecType::CancelReject:
+                if (ack_it != ack_received_ticks.end()) {
+                    tracer.record_ack_fill(ack_it->second, report_received_ticks,
+                                           report_processed_ticks);
+                    ack_received_ticks.erase(ack_it);
+                }
+                order_sent_ticks.erase(exec.order_id);
+                break;
+        }
+    };
+
     while (running != 0) {
         uint64_t now = nts::instrument::now_ns();
         if (duration_sec > 0 && now >= deadline_ns) break;
@@ -217,7 +261,7 @@ static void run_pipeline(nts::MdReceiver& ref_md, nts::MdReceiver& target_md, nt
                     oms.send_new(exit_side, exit_price, exit_qty, nts::OrderType::IOC);
                 if (order != nullptr) {
                     exchange.submit_order(*order);
-                    tracer.record(Hop::OrderSent);
+                    record_submitted_order(*order);
                 }
             } else if (sig != nts::Signal::None && book.valid()) {
                 nts::Side  side  = (sig == nts::Signal::Buy) ? nts::Side::Buy : nts::Side::Sell;
@@ -227,15 +271,13 @@ static void run_pipeline(nts::MdReceiver& ref_md, nts::MdReceiver& target_md, nt
                     oms.send_new(side, price, strategy.order_size(), nts::OrderType::IOC);
                 if (order != nullptr) {
                     exchange.submit_order(*order);
+                    record_submitted_order(*order);
                 }
-                tracer.record(Hop::OrderSent);
             }
 
             nts::ExecutionReport exec;
             while (exchange.poll_execution(exec)) {
-                tracer.record(Hop::AckReceived);
-                oms.on_execution(exec);
-                tracer.record(Hop::AckProcessed);
+                process_execution(exec);
             }
 
             tracer.end_trace();
@@ -244,7 +286,7 @@ static void run_pipeline(nts::MdReceiver& ref_md, nts::MdReceiver& target_md, nt
 
             nts::ExecutionReport exec;
             while (exchange.poll_execution(exec)) {
-                oms.on_execution(exec);
+                process_execution(exec);
             }
         }
 
