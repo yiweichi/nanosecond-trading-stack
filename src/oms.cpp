@@ -1,5 +1,4 @@
 #include "nts/oms.h"
-#include "nts/instrument/clock.h"
 
 #include <cmath>
 
@@ -64,20 +63,6 @@ void OMS::free_slot(size_t slot, OrderId id) {
     free_stack_[free_top_++] = slot;
 }
 
-// ── Order queries ───────────────────────────────────────────────────────────
-
-const Order* OMS::find_order(OrderId id) const {
-    size_t pos = map_find(id);
-    if (pos >= ORDER_MAP_SIZE) return nullptr;
-    return &orders_[order_map_[pos].slot];
-}
-
-Order* OMS::find_order(OrderId id) {
-    size_t pos = map_find(id);
-    if (pos >= ORDER_MAP_SIZE) return nullptr;
-    return &orders_[order_map_[pos].slot];
-}
-
 // ── Risk check ──────────────────────────────────────────────────────────────
 
 bool OMS::check_risk(Side side, Price price, Qty qty) const {
@@ -105,8 +90,7 @@ Order* OMS::send_new(Side side, Price price, Qty qty, OrderType type) {
     size_t slot = alloc_slot();
     if (slot >= MAX_ORDERS) return nullptr;
 
-    OrderId  id = next_id_++;
-    uint64_t ts = instrument::now_ns();
+    OrderId id = next_id_++;
 
     Order& o         = orders_[slot];
     o.id             = id;
@@ -117,9 +101,6 @@ Order* OMS::send_new(Side side, Price price, Qty qty, OrderType type) {
     o.side           = side;
     o.type           = type;
     o.status         = OrderStatus::Sent;
-    o.create_ts      = ts;
-    o.sent_ts        = ts;
-    o.last_update_ts = ts;
     o.avg_fill_price = 0.0;
 
     map_insert(id, static_cast<uint32_t>(slot));
@@ -143,8 +124,7 @@ void OMS::on_execution(const ExecutionReport& report) {
     switch (report.exec_type) {
         case ExecType::NewAck: {
             if (o.status != OrderStatus::Sent) return;
-            o.status         = OrderStatus::Live;
-            o.last_update_ts = report.timestamp_ns;
+            o.status = OrderStatus::Live;
             if (pending_new_ > 0) pending_new_--;
             accepted_orders_++;
             live_orders_++;
@@ -176,7 +156,6 @@ void OMS::on_execution(const ExecutionReport& report) {
 
             bool fully_filled = (report.exec_type == ExecType::Fill || o.leaves_qty == 0);
             o.status          = fully_filled ? OrderStatus::Filled : OrderStatus::PartiallyFilled;
-            o.last_update_ts  = report.timestamp_ns;
 
             // Transfer filled qty from pending delta to actual position
             int32_t fill_delta =
@@ -203,9 +182,6 @@ void OMS::on_execution(const ExecutionReport& report) {
         }
 
         case ExecType::CancelAck: {
-            if (o.status == OrderStatus::PendingCancel) {
-                if (pending_cxl_ > 0) pending_cxl_--;
-            }
             if (o.type == OrderType::IOC && o.filled_qty == 0) {
                 missed_ioc_++;
             }
@@ -214,8 +190,7 @@ void OMS::on_execution(const ExecutionReport& report) {
                                                       : -static_cast<int32_t>(o.leaves_qty);
             pending_position_delta_ -= remaining;
 
-            o.status         = OrderStatus::Cancelled;
-            o.last_update_ts = report.timestamp_ns;
+            o.status = OrderStatus::Cancelled;
             if (live_orders_ > 0) live_orders_--;
             cancels_++;
             free_slot(slot, o.id);
@@ -230,19 +205,13 @@ void OMS::on_execution(const ExecutionReport& report) {
                                                       : -static_cast<int32_t>(o.leaves_qty);
             pending_position_delta_ -= remaining;
 
-            o.status         = OrderStatus::Rejected;
-            o.last_update_ts = report.timestamp_ns;
+            o.status = OrderStatus::Rejected;
             rejects_++;
             free_slot(slot, o.id);
             break;
         }
 
         case ExecType::CancelReject: {
-            if (o.status == OrderStatus::PendingCancel) {
-                o.status = (o.filled_qty > 0) ? OrderStatus::PartiallyFilled : OrderStatus::Live;
-                if (pending_cxl_ > 0) pending_cxl_--;
-            }
-            o.last_update_ts = report.timestamp_ns;
             break;
         }
 

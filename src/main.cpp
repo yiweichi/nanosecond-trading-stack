@@ -2,7 +2,6 @@
 #include "nts/instrument/stats.h"
 #include "nts/instrument/tracer.h"
 #include "nts/market_data.h"
-#include "nts/md_sync_gate.h"
 #include "nts/oms.h"
 #include "nts/order_gateway.h"
 #include "nts/orderbook.h"
@@ -164,7 +163,7 @@ static void run_pipeline(nts::MdReceiver& ref_md, nts::MdReceiver& target_md, nt
     uint64_t latest_md_receive_ticks     = 0;
 
     auto record_ready_order = [&](nts::Order& order) {
-        const uint64_t sent_ticks = nts::instrument::raw_ticks();
+        const uint64_t sent_ticks  = nts::instrument::raw_ticks();
         order.source_exchange_tick = latest_source_exchange_tick;
         order.client_reaction_ns =
             (latest_md_receive_ticks != 0 && sent_ticks >= latest_md_receive_ticks)
@@ -218,13 +217,13 @@ static void run_pipeline(nts::MdReceiver& ref_md, nts::MdReceiver& target_md, nt
         tracer.start_trace();
         tracer.record(Hop::RecvStart);
 
-        bool got_ref_data        = ref_md.poll(ref_msg);
-        uint64_t ref_receive_ticks = got_ref_data ? nts::instrument::raw_ticks() : 0;
-        bool got_target_data     = target_md.poll(target_msg);
+        bool     got_ref_data         = ref_md.poll(ref_msg);
+        uint64_t ref_receive_ticks    = got_ref_data ? nts::instrument::raw_ticks() : 0;
+        bool     got_target_data      = target_md.poll(target_msg);
         uint64_t target_receive_ticks = got_target_data ? nts::instrument::raw_ticks() : 0;
-        bool got_data          = got_ref_data || got_target_data;
-        bool reference_updated = false;
-        bool last_md_was_quote = false;
+        bool     got_data             = got_ref_data || got_target_data;
+        bool     reference_updated    = false;
+        bool     last_md_was_quote    = false;
 
         if (got_data) {
             tracer.record(Hop::RecvDone);
@@ -253,7 +252,8 @@ static void run_pipeline(nts::MdReceiver& ref_md, nts::MdReceiver& target_md, nt
             }
             tracer.record(Hop::BookUpdated);
 
-            if (book.valid()) oms.set_reference_price(book.mid_price());
+            const bool book_is_valid = book.valid();
+            if (book_is_valid) oms.set_reference_price(book.mid_price());
 
             nts::Signal sig               = nts::Signal::None;
             int32_t     position          = oms.net_position();
@@ -262,8 +262,10 @@ static void run_pipeline(nts::MdReceiver& ref_md, nts::MdReceiver& target_md, nt
             nts::Side  exit_side  = nts::Side::Buy;
             nts::Price exit_price = 0.0;
             nts::Qty   exit_qty   = 0;
+
             bool should_exit = !has_pending_order &&
                                build_exit_order(book, position, exit_side, exit_price, exit_qty);
+
             if (position == 0 && !should_exit && !has_pending_order &&
                 (reference_updated || last_md_was_quote)) {
                 sig = strategy.on_book_update(book, position);
@@ -277,7 +279,7 @@ static void run_pipeline(nts::MdReceiver& ref_md, nts::MdReceiver& target_md, nt
                     record_ready_order(*order);
                     exchange.submit_order(*order);
                 }
-            } else if (sig != nts::Signal::None && book.valid()) {
+            } else if (sig != nts::Signal::None && book_is_valid) {
                 nts::Side  side  = (sig == nts::Signal::Buy) ? nts::Side::Buy : nts::Side::Sell;
                 nts::Price price = (side == nts::Side::Buy) ? book.best_ask() : book.best_bid();
 

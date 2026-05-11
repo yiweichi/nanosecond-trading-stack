@@ -7,9 +7,8 @@
 namespace nts {
 
 struct PriceLevel {
-    Price price       = 0.0;
-    Qty   qty         = 0;
-    Qty   order_count = 0;
+    Price price = 0.0;
+    Qty   qty   = 0;
 };
 
 class OrderBook {
@@ -25,39 +24,11 @@ public:
     Price best_ask() const;
     Price reference_mid() const { return reference_mid_; }
     bool  has_reference() const { return has_reference_; }
-    Qty   best_bid_qty() const;
-    Qty   best_ask_qty() const;
-
-    // ── L2 access ────────────────────────────────────────────────
-    int               bid_depth() const { return bid_depth_; }
-    int               ask_depth() const { return ask_depth_; }
-    const PriceLevel& bid_level(int i) const { return bids_[i]; }
-    const PriceLevel& ask_level(int i) const { return asks_[i]; }
 
     // ── Analytics ────────────────────────────────────────────────
     double mid_price() const;
-    double spread() const;
-    double spread_bps() const;
 
-    // Qty imbalance across N levels: +1 = all bids, -1 = all asks
-    double imbalance(int levels = 1) const;
-
-    // Qty-weighted mid price across N levels (micro-price estimator)
-    double weighted_mid(int levels = 3) const;
-
-    // Volume-weighted average price to fill target_qty on given side
-    double vwap(Side side, Qty target_qty) const;
-
-    // Bid-to-ask qty ratio across N levels (>1 = buying pressure)
-    double book_pressure(int levels = 5) const;
-
-    Qty total_bid_qty(int levels = MAX_LEVELS) const;
-    Qty total_ask_qty(int levels = MAX_LEVELS) const;
-
-    // ── Metadata ─────────────────────────────────────────────────
-    uint64_t last_update_ts() const { return last_update_ts_; }
-    uint64_t update_count() const { return update_count_; }
-    bool     valid() const { return bid_depth_ > 0 && ask_depth_ > 0; }
+    bool valid() const { return bid_depth_ > 0 && ask_depth_ > 0; }
 
     void clear();
 
@@ -69,9 +40,6 @@ private:
 
     Price reference_mid_ = 0.0;
     bool  has_reference_ = false;
-
-    uint64_t last_update_ts_ = 0;
-    uint64_t update_count_   = 0;
 };
 
 }  // namespace nts

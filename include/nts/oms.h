@@ -7,20 +7,17 @@
 namespace nts {
 
 struct Order {
-    OrderId     id             = 0;
-    Price       price          = 0.0;
-    Qty         qty            = 0;
-    Qty         filled_qty     = 0;
-    Qty         leaves_qty     = 0;
-    Side        side           = Side::Buy;
-    OrderType   type           = OrderType::Limit;
-    OrderStatus status         = OrderStatus::Empty;
-    uint64_t    create_ts      = 0;
-    uint64_t    sent_ts        = 0;
-    uint64_t    last_update_ts = 0;
+    OrderId     id                   = 0;
+    Price       price                = 0.0;
+    Qty         qty                  = 0;
+    Qty         filled_qty           = 0;
+    Qty         leaves_qty           = 0;
+    Side        side                 = Side::Buy;
+    OrderType   type                 = OrderType::Limit;
+    OrderStatus status               = OrderStatus::Empty;
     uint64_t    source_exchange_tick = 0;
     uint64_t    client_reaction_ns   = 0;
-    double      avg_fill_price = 0.0;
+    double      avg_fill_price       = 0.0;
 };
 
 struct ExecutionReport {
@@ -51,13 +48,8 @@ public:
     void on_execution(const ExecutionReport& report);
 
     // ── Risk ─────────────────────────────────────────────────────
-    void set_risk_limits(const RiskLimits& limits) { risk_ = limits; }
     void set_reference_price(Price price) { ref_price_ = price; }
     bool check_risk(Side side, Price price, Qty qty) const;
-
-    // ── Order queries ────────────────────────────────────────────
-    const Order* find_order(OrderId id) const;
-    Order*       find_order(OrderId id);
 
     // ── Position & PnL ───────────────────────────────────────────
     int32_t net_position() const { return position_; }
@@ -67,8 +59,7 @@ public:
     double  total_pnl(Price current_mid) const;
 
     // ── Statistics ───────────────────────────────────────────────
-    size_t live_order_count() const { return live_orders_; }
-    size_t pending_count() const { return pending_new_ + pending_cxl_; }
+    size_t pending_count() const { return pending_new_; }
     size_t total_orders() const { return order_count_; }
     size_t total_accepted_orders() const { return accepted_orders_; }
     size_t total_filled_orders() const { return filled_orders_; }
@@ -112,7 +103,6 @@ private:
     Price      ref_price_   = 0.0;
     size_t     live_orders_ = 0;
     size_t     pending_new_ = 0;
-    size_t     pending_cxl_ = 0;
 
     // Stats
     size_t accepted_orders_  = 0;
