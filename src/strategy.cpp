@@ -4,7 +4,7 @@ namespace nts {
 ImbalanceStrategy::ImbalanceStrategy(const StrategyParams& params) : params_(params) {}
 
 Signal ImbalanceStrategy::on_book_update(const OrderBook& book, int32_t position) {
-    if (!book.valid() || !book.has_reference()) return Signal::None;
+    if (!book.has_reference()) return Signal::None;
 
     const Price reference = book.reference_mid();
 

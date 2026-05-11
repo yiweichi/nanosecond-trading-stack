@@ -30,7 +30,6 @@ Price OrderBook::best_ask() const {
 // ── Analytics ────────────────────────────────────────────────────────────────
 
 double OrderBook::mid_price() const {
-    if (!valid()) return 0.0;
     return (bids_[0].price + asks_[0].price) * 0.5;
 }
 

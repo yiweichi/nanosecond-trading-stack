@@ -31,7 +31,7 @@ static constexpr nts::Price EXIT_HALF_SPREAD = 1.0;
 
 static bool build_exit_order(const nts::OrderBook& book, int32_t position, nts::Side& side,
                              nts::Price& price, nts::Qty& qty) {
-    if (position == 0 || !book.valid() || !book.has_reference()) return false;
+    if (position == 0 || !book.has_reference()) return false;
 
     const nts::Price reference = book.reference_mid();
     if (position > 0) {
@@ -252,8 +252,7 @@ static void run_pipeline(nts::MdReceiver& ref_md, nts::MdReceiver& target_md, nt
             }
             tracer.record(Hop::BookUpdated);
 
-            const bool book_is_valid = book.valid();
-            if (book_is_valid) oms.set_reference_price(book.mid_price());
+            oms.set_reference_price(book.mid_price());
 
             nts::Signal sig               = nts::Signal::None;
             int32_t     position          = oms.net_position();
@@ -279,7 +278,7 @@ static void run_pipeline(nts::MdReceiver& ref_md, nts::MdReceiver& target_md, nt
                     record_ready_order(*order);
                     exchange.submit_order(*order);
                 }
-            } else if (sig != nts::Signal::None && book_is_valid) {
+            } else if (sig != nts::Signal::None) {
                 nts::Side  side  = (sig == nts::Signal::Buy) ? nts::Side::Buy : nts::Side::Sell;
                 nts::Price price = (side == nts::Side::Buy) ? book.best_ask() : book.best_bid();
 
