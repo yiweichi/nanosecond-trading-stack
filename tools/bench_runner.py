@@ -47,7 +47,7 @@ def parse_args() -> argparse.Namespace:
         help="matching-engine binary.",
     )
     parser.add_argument("--duration", type=float, default=10.0, help="Client run duration seconds.")
-    parser.add_argument("--tick-rate", type=int, default=10_000, help="Exchange ticks per second.")
+    parser.add_argument("--tick-rate", type=int, default=1_000, help="Exchange ticks per second.")
     parser.add_argument(
         "--settle",
         type=float,
@@ -242,6 +242,44 @@ def extract_server_client_report(text: str, client_id: int) -> str:
     return "\n".join(lines[start:end])
 
 
+def extract_per_hop_report(text: str) -> str:
+    lines = text.splitlines()
+    start = None
+
+    for i, line in enumerate(lines):
+        if "Per-Hop Latency" in line:
+            start = i
+            break
+
+    if start is None:
+        for i, line in enumerate(lines):
+            if (
+                "Segment" in line
+                and "Samples" in line
+                and "P50" in line
+                and "StdDev" in line
+            ):
+                start = max(0, i - 1)
+                break
+
+    if start is None:
+        return ""
+
+    end = len(lines)
+    for i in range(start + 1, len(lines)):
+        stripped = lines[i].strip()
+        if stripped.startswith("[pipeline]"):
+            end = i
+            break
+        if stripped.startswith("--- ") and "Latency" not in stripped:
+            end = i
+            break
+        if stripped.startswith("===") and i > start + 3:
+            end = i
+            break
+    return "\n".join(lines[start:end]).rstrip()
+
+
 def parse_pipeline_report(text: str) -> dict[str, float | int]:
     metrics: dict[str, float | int] = {}
 
@@ -407,6 +445,8 @@ def print_client(label: str, row: dict[str, object]) -> None:
 def print_summary(summary: dict[str, object]) -> None:
     reports = summary["reports"]
 
+    print_block("Client A Per-Hop Latency", reports["client_a_per_hop"])
+    print_block("Client B Per-Hop Latency", reports["client_b_per_hop"])
     print_block("Client A Pipeline Report", reports["client_a_pipeline"])
     print_block("Client B Pipeline Report", reports["client_b_pipeline"])
 
@@ -492,6 +532,8 @@ def run_once(args: argparse.Namespace, out_dir: Path) -> dict[str, object]:
         exchange_err.close()
 
     exchange_report = read_text(exchange_stderr)
+    client_a_stdout_report = read_text(client_a_stdout)
+    client_b_stdout_report = read_text(client_b_stdout)
     client_a_report = read_text(client_a_stderr)
     client_b_report = read_text(client_b_stderr)
     server_clients = parse_server_report(exchange_report)
@@ -526,8 +568,10 @@ def run_once(args: argparse.Namespace, out_dir: Path) -> dict[str, object]:
         },
         "reports": {
             "client_a_pipeline": client_a_report,
+            "client_a_per_hop": extract_per_hop_report(client_a_stdout_report),
             "client_a_server": extract_server_client_report(exchange_report, 1),
             "client_b_pipeline": client_b_report,
+            "client_b_per_hop": extract_per_hop_report(client_b_stdout_report),
             "client_b_server": extract_server_client_report(exchange_report, 2),
         },
     }
