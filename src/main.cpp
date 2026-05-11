@@ -160,8 +160,16 @@ static void run_pipeline(nts::MdReceiver& ref_md, nts::MdReceiver& target_md, nt
     order_sent_ticks.reserve(nts::OMS::MAX_ORDERS);
     ack_received_ticks.reserve(nts::OMS::MAX_ORDERS);
 
-    auto record_submitted_order = [&](const nts::Order& order) {
+    uint64_t latest_source_exchange_tick = 0;
+    uint64_t latest_md_receive_ticks     = 0;
+
+    auto record_ready_order = [&](nts::Order& order) {
         const uint64_t sent_ticks = nts::instrument::raw_ticks();
+        order.source_exchange_tick = latest_source_exchange_tick;
+        order.client_reaction_ns =
+            (latest_md_receive_ticks != 0 && sent_ticks >= latest_md_receive_ticks)
+                ? nts::instrument::ticks_to_ns(sent_ticks - latest_md_receive_ticks)
+                : 0;
         tracer.record_at(nts::instrument::Hop::OrderSent, sent_ticks);
         order_sent_ticks[order.id] = sent_ticks;
     };
@@ -210,8 +218,10 @@ static void run_pipeline(nts::MdReceiver& ref_md, nts::MdReceiver& target_md, nt
         tracer.start_trace();
         tracer.record(Hop::RecvStart);
 
-        bool got_ref_data      = ref_md.poll(ref_msg);
-        bool got_target_data   = target_md.poll(target_msg);
+        bool got_ref_data        = ref_md.poll(ref_msg);
+        uint64_t ref_receive_ticks = got_ref_data ? nts::instrument::raw_ticks() : 0;
+        bool got_target_data     = target_md.poll(target_msg);
+        uint64_t target_receive_ticks = got_target_data ? nts::instrument::raw_ticks() : 0;
         bool got_data          = got_ref_data || got_target_data;
         bool reference_updated = false;
         bool last_md_was_quote = false;
@@ -223,6 +233,8 @@ static void run_pipeline(nts::MdReceiver& ref_md, nts::MdReceiver& target_md, nt
 
             if (got_ref_data) {
                 if (ref_msg.header.type == nts::MdMsgType::Reference) {
+                    latest_source_exchange_tick = ref_msg.header.exchange_tick;
+                    latest_md_receive_ticks     = ref_receive_ticks;
                     book.on_reference(ref_msg.reference);
                     reference_updated = true;
                 }
@@ -231,6 +243,8 @@ static void run_pipeline(nts::MdReceiver& ref_md, nts::MdReceiver& target_md, nt
             if (got_target_data) {
                 switch (target_msg.header.type) {
                     case nts::MdMsgType::Quote:
+                        latest_source_exchange_tick = target_msg.header.exchange_tick;
+                        latest_md_receive_ticks     = target_receive_ticks;
                         book.on_quote(target_msg.quote);
                         last_md_was_quote = true;
                         break;
@@ -260,8 +274,8 @@ static void run_pipeline(nts::MdReceiver& ref_md, nts::MdReceiver& target_md, nt
                 nts::Order* order =
                     oms.send_new(exit_side, exit_price, exit_qty, nts::OrderType::IOC);
                 if (order != nullptr) {
+                    record_ready_order(*order);
                     exchange.submit_order(*order);
-                    record_submitted_order(*order);
                 }
             } else if (sig != nts::Signal::None && book.valid()) {
                 nts::Side  side  = (sig == nts::Signal::Buy) ? nts::Side::Buy : nts::Side::Sell;
@@ -270,8 +284,8 @@ static void run_pipeline(nts::MdReceiver& ref_md, nts::MdReceiver& target_md, nt
                 nts::Order* order =
                     oms.send_new(side, price, strategy.order_size(), nts::OrderType::IOC);
                 if (order != nullptr) {
+                    record_ready_order(*order);
                     exchange.submit_order(*order);
-                    record_submitted_order(*order);
                 }
             }
 

@@ -76,6 +76,17 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--exchange-core", type=int, default=3)
     parser.add_argument("--client-a-core", type=int, default=1)
     parser.add_argument("--client-b-core", type=int, default=2)
+    parser.add_argument(
+        "--order-priority",
+        choices=("random", "client-reaction"),
+        default="client-reaction",
+        help="Exchange pending order priority mode.",
+    )
+    parser.add_argument(
+        "--debug-stale-quotes",
+        action="store_true",
+        help="Ask the exchange to log stale quote and priority debugging details.",
+    )
     parser.add_argument("--keep-logs", action="store_true", help="Keep raw stderr/stdout logs.")
     return parser.parse_args()
 
@@ -87,7 +98,15 @@ def run_cmd(cmd: list[str], cwd: Path = ROOT) -> None:
 
 def build() -> None:
     run_cmd(
-        ["cargo", "build", "--manifest-path", "matching-engine/Cargo.toml", "--release"]
+        [
+            "cargo",
+            "build",
+            "--manifest-path",
+            "matching-engine/Cargo.toml",
+            "--target-dir",
+            "matching-engine/target",
+            "--release",
+        ]
     )
 
 
@@ -186,8 +205,10 @@ def exchange_cmd(
     md_group: str,
     ref_group: str,
     core: int,
+    order_priority: str,
+    debug_stale_quotes: bool,
 ) -> list[str]:
-    return with_core([
+    cmd = [
         str(binary),
         "serve",
         "--tick-rate",
@@ -202,7 +223,12 @@ def exchange_cmd(
         ref_group,
         "--order-port",
         str(order_port),
-    ], core)
+        "--order-priority",
+        order_priority,
+    ]
+    if debug_stale_quotes:
+        cmd.append("--debug-stale-quotes")
+    return with_core(cmd, core)
 
 
 def format_duration(duration: float) -> str:
@@ -473,6 +499,8 @@ def run_once(args: argparse.Namespace, out_dir: Path) -> dict[str, object]:
             args.md_group,
             args.ref_group,
             args.exchange_core,
+            args.order_priority,
+            args.debug_stale_quotes,
         ),
         exchange_stdout,
         exchange_stderr,
@@ -550,6 +578,7 @@ def run_once(args: argparse.Namespace, out_dir: Path) -> dict[str, object]:
         "client_b_core": args.client_b_core,
         "duration_sec": args.duration,
         "tick_rate": args.tick_rate,
+        "order_priority": args.order_priority,
         "client_a": client_a,
         "client_b": client_b,
         "diff": {
