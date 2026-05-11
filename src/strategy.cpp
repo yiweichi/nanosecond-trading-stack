@@ -9,12 +9,10 @@ Signal ImbalanceStrategy::on_book_update(const OrderBook& book, int32_t position
     const Price reference = book.reference_mid();
 
     if (reference >= book.best_ask() + params_.edge_threshold && position < params_.max_position) {
-        signals_++;
         return Signal::Buy;
     }
 
     if (book.best_bid() >= reference + params_.edge_threshold && position > -params_.max_position) {
-        signals_++;
         return Signal::Sell;
     }
 

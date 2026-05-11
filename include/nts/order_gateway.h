@@ -17,8 +17,6 @@ public:
     bool poll_execution(ExecutionReport& report);
     void close();
 
-    bool connected() const { return sockfd_ >= 0; }
-
 private:
     int sockfd_ = -1;
 
