@@ -35,11 +35,6 @@ add_executable(nts_pipeline src/main.cpp)
 target_link_libraries(nts_pipeline PRIVATE nts_core)
 target_compile_options(nts_pipeline PRIVATE -Wall -Wextra -Wpedantic)
 
-# Self-contained pipeline benchmark
-add_executable(pipeline_bench benchmarks/pipeline_bench.cpp)
-target_link_libraries(pipeline_bench PRIVATE nts_core)
-target_compile_options(pipeline_bench PRIVATE -Wall -Wextra -Wpedantic)
-
 # Matching engine benchmark + tests
 add_executable(matching_bench benchmarks/matching_bench.cpp)
 target_link_libraries(matching_bench PRIVATE nts_core)
