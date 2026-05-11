@@ -17,6 +17,8 @@ const std::vector<Segment>& StatsCalculator::per_hop_segments() {
         {Hop::StrategyDone, Hop::OrderSent, "StrategyDone -> OrderSent"},
         {Hop::OrderSent, Hop::AckReceived, "OrderSent -> AckReceived"},
         {Hop::AckReceived, Hop::AckProcessed, "AckReceived -> AckProcessed"},
+        {Hop::AckReceived, Hop::FillReceived, "AckReceived -> FillReceived"},
+        {Hop::FillReceived, Hop::FillProcessed, "FillReceived -> FillProcessed"},
     };
     return segs;
 }
@@ -26,7 +28,7 @@ const std::vector<Segment>& StatsCalculator::end_to_end_segments() {
         {Hop::RecvDone, Hop::StrategyDone, "RecvDone -> StrategyDone (core)"},
         {Hop::RecvDone, Hop::OrderSent, "RecvDone -> OrderSent (tick-to-order)"},
         {Hop::RecvStart, Hop::OrderSent, "RecvStart -> OrderSent (tick-to-trade)"},
-        {Hop::OrderSent, Hop::AckProcessed, "OrderSent -> AckProcessed (exchange RT)"},
+        {Hop::OrderSent, Hop::FillProcessed, "OrderSent -> FillProcessed (exchange RT)"},
     };
     return segs;
 }

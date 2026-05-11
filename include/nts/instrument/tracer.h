@@ -16,6 +16,8 @@ enum class Hop : uint8_t {
     OrderSent,
     AckReceived,
     AckProcessed,
+    FillReceived,
+    FillProcessed,
     COUNT
 };
 
@@ -26,7 +28,7 @@ struct alignas(64) TraceRecord {
     static constexpr size_t NUM_HOPS = static_cast<size_t>(Hop::COUNT);
 
     uint64_t ticks[NUM_HOPS];
-    uint8_t  recorded_mask;
+    uint16_t recorded_mask;
 
     bool has(Hop h) const { return (recorded_mask & (1u << static_cast<uint8_t>(h))) != 0u; }
 
@@ -71,10 +73,54 @@ public:
         if (__builtin_expect(!in_trace_, 0) != 0) {  // NOLINT(readability-implicit-bool-conversion)
             return;
         }
+        record_at(hop, raw_ticks());
+    }
+
+    inline void record_at(Hop hop, uint64_t ticks) {
+        if (__builtin_expect(!in_trace_, 0) != 0) {  // NOLINT(readability-implicit-bool-conversion)
+            return;
+        }
         auto pos                = write_pos();
         auto idx                = static_cast<size_t>(hop);
-        traces_[pos].ticks[idx] = raw_ticks();
+        traces_[pos].ticks[idx] = ticks;
         traces_[pos].recorded_mask |= (1u << static_cast<uint8_t>(hop));
+    }
+
+    inline void record_order_ack(uint64_t order_sent_ticks, uint64_t ack_received_ticks,
+                                 uint64_t ack_processed_ticks) {
+        if (__builtin_expect(!enabled_, 0) != 0) {  // NOLINT(readability-implicit-bool-conversion)
+            return;
+        }
+
+        // If a market-data trace is currently open, append the ack trace after
+        // it. The current pipeline records acks after all per-loop hops, so the
+        // active trace will not receive more record() calls before end_trace().
+        auto& trace         = traces_[(total_count_ + (in_trace_ ? 1u : 0u)) & capacity_mask_];
+        trace.recorded_mask = 0;
+        trace.ticks[static_cast<size_t>(Hop::OrderSent)]    = order_sent_ticks;
+        trace.ticks[static_cast<size_t>(Hop::AckReceived)]  = ack_received_ticks;
+        trace.ticks[static_cast<size_t>(Hop::AckProcessed)] = ack_processed_ticks;
+        trace.recorded_mask = (1u << static_cast<uint8_t>(Hop::OrderSent)) |
+                              (1u << static_cast<uint8_t>(Hop::AckReceived)) |
+                              (1u << static_cast<uint8_t>(Hop::AckProcessed));
+        total_count_++;
+    }
+
+    inline void record_ack_fill(uint64_t ack_received_ticks, uint64_t fill_received_ticks,
+                                uint64_t fill_processed_ticks) {
+        if (__builtin_expect(!enabled_, 0) != 0) {  // NOLINT(readability-implicit-bool-conversion)
+            return;
+        }
+
+        auto& trace         = traces_[(total_count_ + (in_trace_ ? 1u : 0u)) & capacity_mask_];
+        trace.recorded_mask = 0;
+        trace.ticks[static_cast<size_t>(Hop::AckReceived)]   = ack_received_ticks;
+        trace.ticks[static_cast<size_t>(Hop::FillReceived)]  = fill_received_ticks;
+        trace.ticks[static_cast<size_t>(Hop::FillProcessed)] = fill_processed_ticks;
+        trace.recorded_mask = (1u << static_cast<uint8_t>(Hop::AckReceived)) |
+                              (1u << static_cast<uint8_t>(Hop::FillReceived)) |
+                              (1u << static_cast<uint8_t>(Hop::FillProcessed));
+        total_count_++;
     }
 
     inline void end_trace() {
@@ -123,6 +169,9 @@ private:
 struct NoopTracer {
     void   start_trace() {}
     void   record(Hop) {}
+    void   record_at(Hop, uint64_t) {}
+    void   record_order_ack(uint64_t, uint64_t, uint64_t) {}
+    void   record_ack_fill(uint64_t, uint64_t, uint64_t) {}
     void   end_trace() {}
     void   discard_trace() {}
     void   enable() {}

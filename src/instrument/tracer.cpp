@@ -11,6 +11,8 @@ const char* hop_name(Hop h) {
         case Hop::OrderSent: return "OrderSent";
         case Hop::AckReceived: return "AckReceived";
         case Hop::AckProcessed: return "AckProcessed";
+        case Hop::FillReceived: return "FillReceived";
+        case Hop::FillProcessed: return "FillProcessed";
         case Hop::COUNT: return "COUNT";
     }
     return "Unknown";
