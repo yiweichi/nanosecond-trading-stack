@@ -43,7 +43,6 @@ full command reference.
 
 ```bash
 make release      # Build C++ binaries
-make bench        # Run C++ pipeline benchmark
 make match-bench  # Run Rust matching-engine benchmark wrapper
 ```
 

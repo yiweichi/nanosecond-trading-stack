@@ -19,15 +19,6 @@
 
 The pipeline requires two terminals: `make gen` in one, `make run` in another.
 
-## Pipeline Benchmark
-
-| Command | Description |
-|---|---|
-| `make bench` | Run pipeline benchmark (100K iterations) |
-| `make bench BENCH_ITERS=500000 BENCH_WARM=50000` | Custom iterations/warmup |
-
-Results saved to `results/pipeline/mac/<timestamp>.txt`.
-
 ## Matching Engine Benchmark
 
 | Command | Description |
