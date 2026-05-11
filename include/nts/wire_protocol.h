@@ -28,8 +28,10 @@ struct WireOrderMsg {
     double   price;
     uint32_t qty;
     uint32_t _pad2;
+    uint64_t source_exchange_tick;
+    uint64_t client_reaction_ns;
 };
-static_assert(sizeof(WireOrderMsg) == 32, "WireOrderMsg layout mismatch");
+static_assert(sizeof(WireOrderMsg) == 48, "WireOrderMsg layout mismatch");
 
 // ── Execution report: Rust Exchange -> C++ HFT (via TCP) ─────────────────────
 

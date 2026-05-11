@@ -61,6 +61,8 @@ void OrderGateway::submit_order(const Order& order) {
     msg.client_order_id = order.id;
     msg.price           = order.price;
     msg.qty             = order.qty;
+    msg.source_exchange_tick = order.source_exchange_tick;
+    msg.client_reaction_ns   = order.client_reaction_ns;
 
     auto   data = reinterpret_cast<const uint8_t*>(&msg);
     size_t left = sizeof(msg);

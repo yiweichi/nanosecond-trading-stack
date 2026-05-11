@@ -18,6 +18,8 @@ struct Order {
     uint64_t    create_ts      = 0;
     uint64_t    sent_ts        = 0;
     uint64_t    last_update_ts = 0;
+    uint64_t    source_exchange_tick = 0;
+    uint64_t    client_reaction_ns   = 0;
     double      avg_fill_price = 0.0;
 };
 
