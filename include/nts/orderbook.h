@@ -28,8 +28,6 @@ public:
     // ── Analytics ────────────────────────────────────────────────
     double mid_price() const;
 
-    bool valid() const { return bid_depth_ > 0 && ask_depth_ > 0; }
-
     void clear();
 
 private:
