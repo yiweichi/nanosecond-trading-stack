@@ -49,9 +49,9 @@ class MdReceiver {
 public:
     static constexpr const char* DEFAULT_MULTICAST_GROUP = "239.1.1.1";
 
-    bool init(uint16_t port, const char* multicast_group = DEFAULT_MULTICAST_GROUP);
-    bool poll(MdMsg& msg);
-    void close();
+    bool              init(uint16_t port, const char* multicast_group = DEFAULT_MULTICAST_GROUP);
+    NTS_NOINLINE bool poll(MdMsg& msg);
+    void              close();
 
     uint64_t packets_received() const { return packets_; }
     uint64_t packets_dropped() const { return drops_; }

@@ -42,7 +42,8 @@ public:
     static constexpr size_t ORDER_MAP_SIZE = 8192;
 
     // ── Order management ─────────────────────────────────────────
-    Order* send_new(Side side, Price price, Qty qty, OrderType type = OrderType::Limit);
+    NTS_NOINLINE Order* send_new(Side side, Price price, Qty qty,
+                                 OrderType type = OrderType::Limit);
 
     // ── Execution processing ─────────────────────────────────────
     void on_execution(const ExecutionReport& report);

@@ -61,7 +61,7 @@ bool MdReceiver::init(uint16_t port, const char* multicast_group) {
     return true;
 }
 
-bool MdReceiver::poll(MdMsg& msg) {
+NTS_NOINLINE bool MdReceiver::poll(MdMsg& msg) {
     if (sockfd_ < 0) return false;
 
     bool  got_latest = false;

@@ -84,7 +84,7 @@ bool OMS::check_risk(Side side, Price price, Qty qty) const {
 
 // ── Order management ────────────────────────────────────────────────────────
 
-Order* OMS::send_new(Side side, Price price, Qty qty, OrderType type) {
+NTS_NOINLINE Order* OMS::send_new(Side side, Price price, Qty qty, OrderType type) {
     if (!check_risk(side, price, qty)) return nullptr;
 
     size_t slot = alloc_slot();

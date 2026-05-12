@@ -12,10 +12,10 @@ class OrderGateway {
 public:
     static constexpr uint16_t DEFAULT_ORDER_PORT = wire::DEFAULT_ORDER_PORT;
 
-    bool connect(const char* host, uint16_t port);
-    void submit_order(const Order& order);
-    bool poll_execution(ExecutionReport& report);
-    void close();
+    bool              connect(const char* host, uint16_t port);
+    NTS_NOINLINE void submit_order(const Order& order);
+    bool              poll_execution(ExecutionReport& report);
+    void              close();
 
 private:
     int sockfd_ = -1;

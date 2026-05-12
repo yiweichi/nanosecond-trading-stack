@@ -2,6 +2,12 @@
 
 #include <cstdint>
 
+#if defined(NTS_PERF_SYMBOLS)
+#define NTS_NOINLINE __attribute__((noinline))
+#else
+#define NTS_NOINLINE
+#endif
+
 namespace nts {
 
 using Price   = double;
