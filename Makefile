@@ -21,10 +21,15 @@
 # Override defaults with environment variables:
 #   make run   PORT=9999 DURATION=30
 #   make gen   PORT=9999 RATE=5000
+#   make release NTS_PERF_SYMBOLS=1   # adds -DNTS_PERF_SYMBOLS for perf annotate
 # ──────────────────────────────────────────────────────────────────────────────
 
 BUILD_DIR   := build
 BUILD_TYPE  ?= Debug
+PERF_CXX_FLAGS :=
+ifeq ($(NTS_PERF_SYMBOLS),1)
+PERF_CXX_FLAGS += -DNTS_PERF_SYMBOLS
+endif
 PORT        ?= 12345
 ORDER_PORT  ?= 12346
 MD_GROUP    ?= 239.1.1.1
@@ -41,10 +46,10 @@ ALL_FILES := $(SRCS) $(HDRS)
 .PHONY: debug release clean match-bench match-scenario match-profile run trade gen fmt fmt-check lint rust-fmt-check rust-clippy rust-test rust-pr pr
 
 release:
-	@mkdir -p $(BUILD_DIR) && cd $(BUILD_DIR) && cmake .. -DCMAKE_BUILD_TYPE=Release && make -j
+	@mkdir -p $(BUILD_DIR) && cd $(BUILD_DIR) && cmake .. -DCMAKE_BUILD_TYPE=Release -DCMAKE_CXX_FLAGS="$(strip $(PERF_CXX_FLAGS))" && make -j
 
 debug:
-	@mkdir -p $(BUILD_DIR) && cd $(BUILD_DIR) && cmake .. -DCMAKE_BUILD_TYPE=$(BUILD_TYPE) && make -j
+	@mkdir -p $(BUILD_DIR) && cd $(BUILD_DIR) && cmake .. -DCMAKE_BUILD_TYPE=$(BUILD_TYPE) -DCMAKE_CXX_FLAGS="$(strip $(PERF_CXX_FLAGS))" && make -j
 
 clean:
 	@rm -rf $(BUILD_DIR)

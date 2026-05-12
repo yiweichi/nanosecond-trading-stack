@@ -44,7 +44,7 @@ bool OrderGateway::connect(const char* host, uint16_t port) {
     return true;
 }
 
-void OrderGateway::submit_order(const Order& order) {
+NTS_NOINLINE void OrderGateway::submit_order(const Order& order) {
     if (sockfd_ < 0) return;
 
     wire::WireOrderMsg msg;
@@ -58,9 +58,9 @@ void OrderGateway::submit_order(const Order& order) {
             fprintf(stderr, "OrderGateway: limit orders are not supported by the wire protocol\n");
             return;
     }
-    msg.client_order_id = order.id;
-    msg.price           = order.price;
-    msg.qty             = order.qty;
+    msg.client_order_id      = order.id;
+    msg.price                = order.price;
+    msg.qty                  = order.qty;
     msg.source_exchange_tick = order.source_exchange_tick;
     msg.client_reaction_ns   = order.client_reaction_ns;
 

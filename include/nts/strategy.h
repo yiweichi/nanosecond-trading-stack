@@ -17,7 +17,7 @@ class ImbalanceStrategy {
 public:
     explicit ImbalanceStrategy(const StrategyParams& params);
 
-    Signal on_book_update(const OrderBook& book, int32_t position);
+    NTS_NOINLINE Signal on_book_update(const OrderBook& book, int32_t position);
 
     Qty order_size() const { return params_.order_size; }
 
