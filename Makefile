@@ -45,10 +45,10 @@ ALL_FILES := $(SRCS) $(HDRS)
 .PHONY: debug release profile clean match-bench match-scenario match-profile run trade gen fmt fmt-check lint rust-fmt-check rust-clippy rust-test rust-pr pr
 
 release:
-	@mkdir -p $(BUILD_DIR) && cd $(BUILD_DIR) && cmake .. -DCMAKE_BUILD_TYPE=Release -DCMAKE_CXX_FLAGS="" -DCMAKE_INTERPROCEDURAL_OPTIMIZATION=OFF && make -j
+	@mkdir -p $(BUILD_DIR) && cd $(BUILD_DIR) && cmake .. -DCMAKE_BUILD_TYPE=Release -DCMAKE_CXX_FLAGS="" -DCMAKE_INTERPROCEDURAL_OPTIMIZATION=$(PROFILE_IPO) && make -j
 
 debug:
-	@mkdir -p $(BUILD_DIR) && cd $(BUILD_DIR) && cmake .. -DCMAKE_BUILD_TYPE=$(BUILD_TYPE) -DCMAKE_CXX_FLAGS="" -DCMAKE_INTERPROCEDURAL_OPTIMIZATION=OFF && make -j
+	@mkdir -p $(BUILD_DIR) && cd $(BUILD_DIR) && cmake .. -DCMAKE_BUILD_TYPE=$(BUILD_TYPE) -DCMAKE_CXX_FLAGS="" -DCMAKE_INTERPROCEDURAL_OPTIMIZATION=$(PROFILE_IPO) && make -j
 
 profile:
 	@mkdir -p $(BUILD_DIR) && cd $(BUILD_DIR) && cmake .. -DCMAKE_BUILD_TYPE=RelWithDebInfo -DCMAKE_CXX_FLAGS="$(strip $(PROFILE_CXX_FLAGS))" -DCMAKE_INTERPROCEDURAL_OPTIMIZATION=$(PROFILE_IPO) && make -j
