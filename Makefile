@@ -3,6 +3,7 @@
 # Targets:
 #   make debug        Build in Debug mode (-O0 -g, for lldb/gdb)
 #   make release      Build in Release mode (-O2)
+#   make profile      Build with symbols/frame pointers for VTune/perf
 #   make clean        Remove the build directory
 #   make match-bench  Release build + run matching engine benchmark (saves to results/)
 #   make match-scenario SCENARIO=<name> [DEPTH=n] [LEVELS=n] [ORDERS=n]
@@ -21,15 +22,13 @@
 # Override defaults with environment variables:
 #   make run   PORT=9999 DURATION=30
 #   make gen   PORT=9999 RATE=5000
-#   make release NTS_PERF_SYMBOLS=1   # adds -DNTS_PERF_SYMBOLS for perf annotate
+#   make profile                      # RelWithDebInfo + LTO + only the profiling scope noinline
 # ──────────────────────────────────────────────────────────────────────────────
 
 BUILD_DIR   := build
 BUILD_TYPE  ?= Debug
-PERF_CXX_FLAGS :=
-ifeq ($(NTS_PERF_SYMBOLS),1)
-PERF_CXX_FLAGS += -DNTS_PERF_SYMBOLS
-endif
+PROFILE_CXX_FLAGS := -DNTS_PROFILE_SCOPE_SYMBOLS -g -fno-omit-frame-pointer
+PROFILE_IPO ?= ON
 PORT        ?= 12345
 ORDER_PORT  ?= 12346
 MD_GROUP    ?= 239.1.1.1
@@ -43,13 +42,16 @@ SRCS := $(shell find src -name '*.cpp') $(shell find benchmarks -name '*.cpp')
 HDRS := $(shell find include -name '*.h')
 ALL_FILES := $(SRCS) $(HDRS)
 
-.PHONY: debug release clean match-bench match-scenario match-profile run trade gen fmt fmt-check lint rust-fmt-check rust-clippy rust-test rust-pr pr
+.PHONY: debug release profile clean match-bench match-scenario match-profile run trade gen fmt fmt-check lint rust-fmt-check rust-clippy rust-test rust-pr pr
 
 release:
-	@mkdir -p $(BUILD_DIR) && cd $(BUILD_DIR) && cmake .. -DCMAKE_BUILD_TYPE=Release -DCMAKE_CXX_FLAGS="$(strip $(PERF_CXX_FLAGS))" && make -j
+	@mkdir -p $(BUILD_DIR) && cd $(BUILD_DIR) && cmake .. -DCMAKE_BUILD_TYPE=Release -DCMAKE_CXX_FLAGS="" -DCMAKE_INTERPROCEDURAL_OPTIMIZATION=OFF && make -j
 
 debug:
-	@mkdir -p $(BUILD_DIR) && cd $(BUILD_DIR) && cmake .. -DCMAKE_BUILD_TYPE=$(BUILD_TYPE) -DCMAKE_CXX_FLAGS="$(strip $(PERF_CXX_FLAGS))" && make -j
+	@mkdir -p $(BUILD_DIR) && cd $(BUILD_DIR) && cmake .. -DCMAKE_BUILD_TYPE=$(BUILD_TYPE) -DCMAKE_CXX_FLAGS="" -DCMAKE_INTERPROCEDURAL_OPTIMIZATION=OFF && make -j
+
+profile:
+	@mkdir -p $(BUILD_DIR) && cd $(BUILD_DIR) && cmake .. -DCMAKE_BUILD_TYPE=RelWithDebInfo -DCMAKE_CXX_FLAGS="$(strip $(PROFILE_CXX_FLAGS))" -DCMAKE_INTERPROCEDURAL_OPTIMIZATION=$(PROFILE_IPO) && make -j
 
 clean:
 	@rm -rf $(BUILD_DIR)
