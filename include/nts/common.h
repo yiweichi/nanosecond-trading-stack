@@ -8,6 +8,12 @@
 #define NTS_NOINLINE
 #endif
 
+#if defined(NTS_PERF_SYMBOLS) || defined(NTS_PROFILE_SCOPE_SYMBOLS)
+#define NTS_PROFILE_NOINLINE __attribute__((noinline))
+#else
+#define NTS_PROFILE_NOINLINE
+#endif
+
 namespace nts {
 
 using Price   = double;
