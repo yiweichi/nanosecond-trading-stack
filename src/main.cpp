@@ -150,7 +150,7 @@ extern "C" NTS_PROFILE_NOINLINE void process_market_signal_and_order(
     bool got_ref_data, const nts::MdMsg& ref_msg, uint64_t ref_receive_ticks, bool got_target_data,
     const nts::MdMsg& target_msg, uint64_t target_receive_ticks, nts::OrderBook& book,
     nts::ImbalanceStrategy& strategy, nts::OMS& oms, nts::OrderGateway& exchange,
-    nts::instrument::HopTracer& tracer, uint64_t& latest_source_exchange_tick,
+    nts::instrument::ActiveTracer& tracer, uint64_t& latest_source_exchange_tick,
     uint64_t& latest_md_receive_ticks,
     std::unordered_map<nts::OrderId, uint64_t>& order_sent_ticks) {
     using nts::instrument::Hop;
@@ -233,7 +233,7 @@ extern "C" NTS_NOINLINE void run_pipeline(nts::MdReceiver& ref_md, nts::MdReceiv
                                           nts::OrderBook& book,
                                           nts::ImbalanceStrategy& strategy, nts::OMS& oms,
                                           nts::OrderGateway& exchange,
-                                          nts::instrument::HopTracer& tracer, int duration_sec,
+                                          nts::instrument::ActiveTracer& tracer, int duration_sec,
                                           bool save_report) {
     uint64_t start_ns    = nts::instrument::now_ns();
     uint64_t deadline_ns = start_ns + static_cast<uint64_t>(duration_sec) * 1'000'000'000ULL;
@@ -328,7 +328,9 @@ extern "C" NTS_NOINLINE void run_pipeline(nts::MdReceiver& ref_md, nts::MdReceiv
 
     double elapsed_s = static_cast<double>(nts::instrument::now_ns() - start_ns) / 1'000'000'000.0;
 
+#ifdef NTS_ENABLE_TRACING
     nts::instrument::StatsCalculator::print_report(tracer);
+#endif
     print_trading_report(ref_md, target_md, oms, book, elapsed_s, iterations);
 
     if (save_report) {
@@ -340,7 +342,9 @@ extern "C" NTS_NOINLINE void run_pipeline(nts::MdReceiver& ref_md, nts::MdReceiv
             perror("fopen save report");
             return;
         }
+#ifdef NTS_ENABLE_TRACING
         nts::instrument::StatsCalculator::print_report(tracer, f);
+#endif
         print_trading_report(ref_md, target_md, oms, book, elapsed_s, iterations, f);
         fclose(f);
         fprintf(stderr, "[pipeline] report saved to %s\n", path.c_str());
@@ -360,7 +364,7 @@ int main(int argc, char* argv[]) {
     nts::ImbalanceStrategy strategy(nts::StrategyParams{});
     nts::OMS               oms;
 
-    nts::instrument::HopTracer tracer;
+    nts::instrument::ActiveTracer tracer;
 
     if (!ref_md.init(args.ref_port, args.ref_group)) return 1;
     if (!target_md.init(args.md_port, args.md_group)) return 1;
