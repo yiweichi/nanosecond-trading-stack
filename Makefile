@@ -22,12 +22,19 @@
 # Override defaults with environment variables:
 #   make run   PORT=9999 DURATION=30
 #   make gen   PORT=9999 RATE=5000
-#   make profile                      # RelWithDebInfo + LTO + only the profiling scope noinline
+#   make release TRACING=OFF           # disables hop-by-hop tracing
+#   make profile                      # RelWithDebInfo + LTO + profiling scope symbols
+#   make profile STACK_PROTECTOR=-fno-stack-protector
 # ──────────────────────────────────────────────────────────────────────────────
 
 BUILD_DIR   := build
 BUILD_TYPE  ?= Debug
-PROFILE_CXX_FLAGS := -DNTS_PROFILE_SCOPE_SYMBOLS -g -fno-omit-frame-pointer
+STACK_PROTECTOR ?= -fstack-protector
+EXTRA_CXX_FLAGS ?=
+CXX_FLAGS   ?= $(STACK_PROTECTOR) $(EXTRA_CXX_FLAGS)
+IPO         ?= OFF
+TRACING     ?= ON
+PROFILE_CXX_FLAGS := -DNTS_PROFILE_SCOPE_SYMBOLS -g -fno-omit-frame-pointer $(STACK_PROTECTOR) $(EXTRA_CXX_FLAGS)
 PROFILE_IPO ?= ON
 PORT        ?= 12345
 ORDER_PORT  ?= 12346
@@ -42,16 +49,19 @@ SRCS := $(shell find src -name '*.cpp') $(shell find benchmarks -name '*.cpp')
 HDRS := $(shell find include -name '*.h')
 ALL_FILES := $(SRCS) $(HDRS)
 
-.PHONY: debug release profile clean match-bench match-scenario match-profile run trade gen fmt fmt-check lint rust-fmt-check rust-clippy rust-test rust-pr pr
+.PHONY: configure debug release profile clean match-bench match-scenario match-profile run trade gen fmt fmt-check lint rust-fmt-check rust-clippy rust-test rust-pr pr
 
-release:
-	@mkdir -p $(BUILD_DIR) && cd $(BUILD_DIR) && cmake .. -DCMAKE_BUILD_TYPE=Release -DCMAKE_CXX_FLAGS="" -DCMAKE_INTERPROCEDURAL_OPTIMIZATION=$(PROFILE_IPO) && make -j
+configure:
+	@mkdir -p $(BUILD_DIR) && cd $(BUILD_DIR) && cmake .. -DCMAKE_BUILD_TYPE=$(BUILD_TYPE) -DCMAKE_CXX_FLAGS="$(strip $(CXX_FLAGS))" -DCMAKE_INTERPROCEDURAL_OPTIMIZATION=$(IPO) -DNTS_ENABLE_TRACING=$(TRACING) && make -j
 
-debug:
-	@mkdir -p $(BUILD_DIR) && cd $(BUILD_DIR) && cmake .. -DCMAKE_BUILD_TYPE=$(BUILD_TYPE) -DCMAKE_CXX_FLAGS="" -DCMAKE_INTERPROCEDURAL_OPTIMIZATION=$(PROFILE_IPO) && make -j
+release: BUILD_TYPE=Release
+release: IPO=OFF
+release: configure
 
-profile:
-	@mkdir -p $(BUILD_DIR) && cd $(BUILD_DIR) && cmake .. -DCMAKE_BUILD_TYPE=RelWithDebInfo -DCMAKE_CXX_FLAGS="$(strip $(PROFILE_CXX_FLAGS))" -DCMAKE_INTERPROCEDURAL_OPTIMIZATION=$(PROFILE_IPO) && make -j
+profile: BUILD_TYPE=RelWithDebInfo
+profile: CXX_FLAGS=$(PROFILE_CXX_FLAGS)
+profile: IPO=$(PROFILE_IPO)
+profile: configure
 
 clean:
 	@rm -rf $(BUILD_DIR)
