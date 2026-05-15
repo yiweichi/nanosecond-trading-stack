@@ -1,15 +1,8 @@
 #include "nts/oms.h"
 
-#include <cmath>
-
 namespace nts {
 
 // ── Hash map internals ──────────────────────────────────────────────────────
-
-size_t OMS::map_hash(OrderId id) const {
-    // Fibonacci hashing — ORDER_MAP_SIZE = 8192 = 2^13
-    return static_cast<size_t>((id * 11400714819323198485ULL) >> (64 - 13));
-}
 
 size_t OMS::map_find(OrderId id) const {
     size_t idx = map_hash(id);
@@ -19,17 +12,6 @@ size_t OMS::map_find(OrderId id) const {
         if (order_map_[pos].id == id) return pos;
     }
     return ORDER_MAP_SIZE;
-}
-
-void OMS::map_insert(OrderId id, uint32_t slot) {
-    size_t idx = map_hash(id);
-    for (size_t i = 0; i < ORDER_MAP_SIZE; i++) {
-        size_t pos = (idx + i) & (ORDER_MAP_SIZE - 1);
-        if (!order_map_[pos].occupied) {
-            order_map_[pos] = {id, slot, true};
-            return;
-        }
-    }
 }
 
 void OMS::map_remove(OrderId id) {
@@ -52,64 +34,9 @@ void OMS::map_remove(OrderId id) {
 
 // ── Slot management ─────────────────────────────────────────────────────────
 
-size_t OMS::alloc_slot() {
-    if (free_top_ > 0) return free_stack_[--free_top_];
-    if (next_fresh_slot_ < MAX_ORDERS) return next_fresh_slot_++;
-    return MAX_ORDERS;  // sentinel: full
-}
-
 void OMS::free_slot(size_t slot, OrderId id) {
     map_remove(id);
     free_stack_[free_top_++] = slot;
-}
-
-// ── Risk check ──────────────────────────────────────────────────────────────
-
-bool OMS::check_risk(Side side, Price price, Qty qty) const {
-    if (qty > risk_.max_order_qty) return false;
-
-    if (live_orders_ + pending_new_ >= risk_.max_live_orders) return false;
-
-    // Include pending fills in position projection to prevent overshoot
-    int32_t base = position_ + pending_position_delta_;
-    base += (side == Side::Buy) ? static_cast<int32_t>(qty) : -static_cast<int32_t>(qty);
-    if (std::abs(base) > risk_.max_position) return false;
-
-    if (ref_price_ > 0.0 && risk_.max_price_deviation > 0.0) {
-        if (std::abs(price - ref_price_) > risk_.max_price_deviation) return false;
-    }
-
-    return true;
-}
-
-// ── Order management ────────────────────────────────────────────────────────
-
-NTS_NOINLINE Order* OMS::send_new(Side side, Price price, Qty qty, OrderType type) {
-    if (!check_risk(side, price, qty)) return nullptr;
-
-    size_t slot = alloc_slot();
-    if (slot >= MAX_ORDERS) return nullptr;
-
-    OrderId id = next_id_++;
-
-    Order& o         = orders_[slot];
-    o.id             = id;
-    o.price          = price;
-    o.qty            = qty;
-    o.filled_qty     = 0;
-    o.leaves_qty     = qty;
-    o.side           = side;
-    o.type           = type;
-    o.status         = OrderStatus::Sent;
-    o.avg_fill_price = 0.0;
-
-    map_insert(id, static_cast<uint32_t>(slot));
-    order_count_++;
-    pending_new_++;
-    pending_position_delta_ +=
-        (side == Side::Buy) ? static_cast<int32_t>(qty) : -static_cast<int32_t>(qty);
-
-    return &o;
 }
 
 // ── Execution processing ────────────────────────────────────────────────────
