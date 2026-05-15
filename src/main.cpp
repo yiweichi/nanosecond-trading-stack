@@ -146,7 +146,7 @@ static void print_trading_report(const nts::MdReceiver& ref_md, const nts::MdRec
 }
 
 /// Isolated market-data -> strategy -> order path for PMU attribution.
-extern "C" NTS_PROFILE_NOINLINE void process_market_signal_and_order(
+extern "C" __attribute__((no_stack_protector)) NTS_PROFILE_NOINLINE void process_market_signal_and_order(
     bool got_ref_data, const nts::MdMsg& ref_msg, uint64_t ref_receive_ticks, bool got_target_data,
     const nts::MdMsg& target_msg, uint64_t target_receive_ticks, nts::OrderBook& book,
     nts::ImbalanceStrategy& strategy, nts::OMS& oms, nts::OrderGateway& exchange,

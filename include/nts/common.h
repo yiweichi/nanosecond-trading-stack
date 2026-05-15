@@ -8,6 +8,12 @@
 #define NTS_NOINLINE
 #endif
 
+#if defined(__GNUC__) || defined(__clang__)
+#define NTS_ALWAYS_INLINE __attribute__((always_inline)) inline
+#else
+#define NTS_ALWAYS_INLINE inline
+#endif
+
 #if defined(NTS_PERF_SYMBOLS) || defined(NTS_PROFILE_SCOPE_SYMBOLS)
 #define NTS_PROFILE_NOINLINE __attribute__((noinline))
 #else
