@@ -9,12 +9,14 @@
 
 #include <sys/stat.h>
 #include <csignal>
+#include <algorithm>
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
 #include <ctime>
 #include <string>
 #include <unordered_map>
+#include <vector>
 
 static volatile sig_atomic_t running = 1;
 
@@ -28,6 +30,77 @@ static void on_signal(int) {
 }
 
 static constexpr nts::Price EXIT_HALF_SPREAD = 1.0;
+
+struct TickSampleStats {
+    uint64_t min_ticks  = 0;
+    uint64_t max_ticks  = 0;
+    uint64_t mean_ticks = 0;
+    uint64_t p50_ticks  = 0;
+    uint64_t p99_ticks  = 0;
+    size_t   samples    = 0;
+    size_t   dropped    = 0;
+};
+
+struct TickSampler {
+    static constexpr size_t MAX_SAMPLES = 1u << 20;
+
+    std::vector<uint64_t> samples;
+    size_t                dropped = 0;
+
+    void reserve() { samples.reserve(MAX_SAMPLES); }
+
+    void add(uint64_t ticks) {
+        if (samples.size() < MAX_SAMPLES) {
+            samples.push_back(ticks);
+        } else {
+            dropped++;
+        }
+    }
+};
+
+static TickSampleStats compute_tick_stats(const TickSampler& sampler) {
+    TickSampleStats stats;
+    stats.samples = sampler.samples.size();
+    stats.dropped = sampler.dropped;
+    if (sampler.samples.empty()) return stats;
+
+    std::vector<uint64_t> sorted = sampler.samples;
+    std::sort(sorted.begin(), sorted.end());
+
+    uint64_t sum = 0;
+    for (uint64_t v : sorted) sum += v;
+
+    stats.min_ticks  = sorted.front();
+    stats.max_ticks  = sorted.back();
+    stats.mean_ticks = sum / sorted.size();
+    stats.p50_ticks  = sorted[(sorted.size() - 1) / 2];
+    stats.p99_ticks  = sorted[((sorted.size() - 1) * 99) / 100];
+    return stats;
+}
+
+static void print_tick_sampler_report(const char* name, const TickSampler& sampler,
+                                      FILE* out = stderr) {
+    const TickSampleStats stats = compute_tick_stats(sampler);
+    if (stats.samples == 0) {
+        fprintf(out, "[profile] %s: no samples", name);
+        if (stats.dropped > 0) fprintf(out, " (%zu dropped)", stats.dropped);
+        fprintf(out, "\n");
+        return;
+    }
+
+    fprintf(out,
+            "[profile] %s: samples=%zu dropped=%zu | ticks min=%llu p50=%llu mean=%llu "
+            "p99=%llu max=%llu | ns p50=%llu p99=%llu max=%llu\n",
+            name, stats.samples, stats.dropped,
+            static_cast<unsigned long long>(stats.min_ticks),
+            static_cast<unsigned long long>(stats.p50_ticks),
+            static_cast<unsigned long long>(stats.mean_ticks),
+            static_cast<unsigned long long>(stats.p99_ticks),
+            static_cast<unsigned long long>(stats.max_ticks),
+            static_cast<unsigned long long>(nts::instrument::ticks_to_ns(stats.p50_ticks)),
+            static_cast<unsigned long long>(nts::instrument::ticks_to_ns(stats.p99_ticks)),
+            static_cast<unsigned long long>(nts::instrument::ticks_to_ns(stats.max_ticks)));
+}
 
 static bool build_exit_order(const nts::OrderBook& book, int32_t position, nts::Side& side,
                              nts::Price& price, nts::Qty& qty) {
@@ -152,7 +225,8 @@ extern "C" __attribute__((no_stack_protector)) NTS_PROFILE_NOINLINE void process
     nts::ImbalanceStrategy& strategy, nts::OMS& oms, nts::OrderGateway& exchange,
     nts::instrument::ActiveTracer& tracer, uint64_t& latest_source_exchange_tick,
     uint64_t& latest_md_receive_ticks,
-    std::unordered_map<nts::OrderId, uint64_t>& order_sent_ticks) {
+    std::unordered_map<nts::OrderId, uint64_t>& order_sent_ticks,
+    TickSampler& order_sent_map_ticks) {
     using nts::instrument::Hop;
 
     bool reference_updated = false;
@@ -206,8 +280,11 @@ extern "C" __attribute__((no_stack_protector)) NTS_PROFILE_NOINLINE void process
             (latest_md_receive_ticks != 0 && sent_ticks >= latest_md_receive_ticks)
                 ? nts::instrument::ticks_to_ns(sent_ticks - latest_md_receive_ticks)
                 : 0;
-        tracer.record_at(nts::instrument::Hop::OrderSent, sent_ticks);
-        order_sent_ticks[order.id] = sent_ticks;
+        const uint64_t map_start_ticks = nts::instrument::raw_ticks();
+        order_sent_ticks[order.id]     = sent_ticks;
+        const uint64_t map_end_ticks   = nts::instrument::raw_ticks();
+        order_sent_map_ticks.add(map_end_ticks - map_start_ticks);
+        tracer.record(nts::instrument::Hop::OrderSent);
     };
 
     if (should_exit) {
@@ -243,6 +320,8 @@ extern "C" NTS_NOINLINE void run_pipeline(nts::MdReceiver& ref_md, nts::MdReceiv
     std::unordered_map<nts::OrderId, uint64_t> ack_received_ticks;
     order_sent_ticks.reserve(nts::OMS::MAX_ORDERS);
     ack_received_ticks.reserve(nts::OMS::MAX_ORDERS);
+    TickSampler order_sent_map_ticks;
+    order_sent_map_ticks.reserve();
 
     uint64_t latest_source_exchange_tick = 0;
     uint64_t latest_md_receive_ticks     = 0;
@@ -306,7 +385,7 @@ extern "C" NTS_NOINLINE void run_pipeline(nts::MdReceiver& ref_md, nts::MdReceiv
                                             got_target_data, target_msg, target_receive_ticks,
                                             book, strategy, oms, exchange, tracer,
                                             latest_source_exchange_tick, latest_md_receive_ticks,
-                                            order_sent_ticks);
+                                            order_sent_ticks, order_sent_map_ticks);
 
             nts::ExecutionReport exec;
             while (exchange.poll_execution(exec)) {
@@ -332,6 +411,7 @@ extern "C" NTS_NOINLINE void run_pipeline(nts::MdReceiver& ref_md, nts::MdReceiv
     nts::instrument::StatsCalculator::print_report(tracer);
 #endif
     print_trading_report(ref_md, target_md, oms, book, elapsed_s, iterations);
+    print_tick_sampler_report("order_sent_ticks operator[]", order_sent_map_ticks);
 
     if (save_report) {
         const std::string dir = live_results_dir();
@@ -346,6 +426,7 @@ extern "C" NTS_NOINLINE void run_pipeline(nts::MdReceiver& ref_md, nts::MdReceiv
         nts::instrument::StatsCalculator::print_report(tracer, f);
 #endif
         print_trading_report(ref_md, target_md, oms, book, elapsed_s, iterations, f);
+        print_tick_sampler_report("order_sent_ticks operator[]", order_sent_map_ticks, f);
         fclose(f);
         fprintf(stderr, "[pipeline] report saved to %s\n", path.c_str());
     }
