@@ -10,12 +10,12 @@
 #include <sys/stat.h>
 #include <csignal>
 #include <algorithm>
+#include <array>
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
 #include <ctime>
 #include <string>
-#include <unordered_map>
 #include <vector>
 
 static volatile sig_atomic_t running = 1;
@@ -100,6 +100,51 @@ static void print_tick_sampler_report(const char* name, const TickSampler& sampl
             static_cast<unsigned long long>(nts::instrument::ticks_to_ns(stats.p50_ticks)),
             static_cast<unsigned long long>(nts::instrument::ticks_to_ns(stats.p99_ticks)),
             static_cast<unsigned long long>(nts::instrument::ticks_to_ns(stats.max_ticks)));
+}
+
+class OrderTickRing {
+public:
+    static constexpr size_t CAPACITY = nts::OMS::ORDER_MAP_SIZE;
+    static_assert((CAPACITY & (CAPACITY - 1)) == 0, "OrderTickRing capacity must be power-of-two");
+
+    void set(nts::OrderId id, uint64_t ticks) {
+        Entry& entry = entries_[index(id)];
+        if (entry.occupied && entry.id != id) collisions_++;
+        entry = Entry{id, ticks, true};
+    }
+
+    bool get(nts::OrderId id, uint64_t& ticks) const {
+        const Entry& entry = entries_[index(id)];
+        if (!entry.occupied || entry.id != id) return false;
+        ticks = entry.ticks;
+        return true;
+    }
+
+    void erase(nts::OrderId id) {
+        Entry& entry = entries_[index(id)];
+        if (entry.occupied && entry.id == id) entry.occupied = false;
+    }
+
+    size_t collisions() const { return collisions_; }
+
+private:
+    struct Entry {
+        nts::OrderId id       = 0;
+        uint64_t     ticks    = 0;
+        bool         occupied = false;
+    };
+
+    static constexpr size_t index(nts::OrderId id) {
+        return static_cast<size_t>(id) & (CAPACITY - 1);
+    }
+
+    std::array<Entry, CAPACITY> entries_ = {};
+    size_t                      collisions_ = 0;
+};
+
+static void print_order_tick_ring_report(const char* name, const OrderTickRing& ring,
+                                         FILE* out = stderr) {
+    fprintf(out, "[profile] %s: collisions=%zu\n", name, ring.collisions());
 }
 
 static bool build_exit_order(const nts::OrderBook& book, int32_t position, nts::Side& side,
@@ -225,8 +270,7 @@ extern "C" __attribute__((no_stack_protector)) NTS_PROFILE_NOINLINE void process
     nts::ImbalanceStrategy& strategy, nts::OMS& oms, nts::OrderGateway& exchange,
     nts::instrument::ActiveTracer& tracer, uint64_t& latest_source_exchange_tick,
     uint64_t& latest_md_receive_ticks,
-    std::unordered_map<nts::OrderId, uint64_t>& order_sent_ticks,
-    TickSampler& order_sent_map_ticks) {
+    OrderTickRing& order_sent_ticks, TickSampler& order_sent_map_ticks) {
     using nts::instrument::Hop;
 
     bool reference_updated = false;
@@ -281,7 +325,7 @@ extern "C" __attribute__((no_stack_protector)) NTS_PROFILE_NOINLINE void process
                 ? nts::instrument::ticks_to_ns(sent_ticks - latest_md_receive_ticks)
                 : 0;
         const uint64_t map_start_ticks = nts::instrument::raw_ticks();
-        order_sent_ticks[order.id]     = sent_ticks;
+        order_sent_ticks.set(order.id, sent_ticks);
         const uint64_t map_end_ticks   = nts::instrument::raw_ticks();
         order_sent_map_ticks.add(map_end_ticks - map_start_ticks);
         tracer.record(nts::instrument::Hop::OrderSent);
@@ -316,10 +360,8 @@ extern "C" NTS_NOINLINE void run_pipeline(nts::MdReceiver& ref_md, nts::MdReceiv
     uint64_t deadline_ns = start_ns + static_cast<uint64_t>(duration_sec) * 1'000'000'000ULL;
     uint64_t iterations  = 0;
 
-    std::unordered_map<nts::OrderId, uint64_t> order_sent_ticks;
-    std::unordered_map<nts::OrderId, uint64_t> ack_received_ticks;
-    order_sent_ticks.reserve(nts::OMS::MAX_ORDERS);
-    ack_received_ticks.reserve(nts::OMS::MAX_ORDERS);
+    OrderTickRing order_sent_ticks;
+    OrderTickRing ack_received_ticks;
     TickSampler order_sent_map_ticks;
     order_sent_map_ticks.reserve();
 
@@ -328,19 +370,20 @@ extern "C" NTS_NOINLINE void run_pipeline(nts::MdReceiver& ref_md, nts::MdReceiv
 
     auto process_execution = [&](const nts::ExecutionReport& exec) {
         const uint64_t report_received_ticks = nts::instrument::raw_ticks();
-        auto           sent_it               = order_sent_ticks.find(exec.order_id);
-        auto           ack_it                = ack_received_ticks.find(exec.order_id);
+        uint64_t       sent_ticks            = 0;
+        uint64_t       ack_ticks             = 0;
+        bool           has_sent_ticks        = order_sent_ticks.get(exec.order_id, sent_ticks);
+        bool           has_ack_ticks         = ack_received_ticks.get(exec.order_id, ack_ticks);
 
         oms.on_execution(exec);
 
         const uint64_t report_processed_ticks = nts::instrument::raw_ticks();
         switch (exec.exec_type) {
             case nts::ExecType::NewAck:
-                if (sent_it != order_sent_ticks.end()) {
-                    tracer.record_order_ack(sent_it->second, report_received_ticks,
-                                            report_processed_ticks);
-                    order_sent_ticks.erase(sent_it);
-                    ack_received_ticks[exec.order_id] = report_received_ticks;
+                if (has_sent_ticks) {
+                    tracer.record_order_ack(sent_ticks, report_received_ticks, report_processed_ticks);
+                    order_sent_ticks.erase(exec.order_id);
+                    ack_received_ticks.set(exec.order_id, report_received_ticks);
                 }
                 break;
             case nts::ExecType::Fill:
@@ -348,10 +391,9 @@ extern "C" NTS_NOINLINE void run_pipeline(nts::MdReceiver& ref_md, nts::MdReceiv
             case nts::ExecType::Reject:
             case nts::ExecType::CancelAck:
             case nts::ExecType::CancelReject:
-                if (ack_it != ack_received_ticks.end()) {
-                    tracer.record_ack_fill(ack_it->second, report_received_ticks,
-                                           report_processed_ticks);
-                    ack_received_ticks.erase(ack_it);
+                if (has_ack_ticks) {
+                    tracer.record_ack_fill(ack_ticks, report_received_ticks, report_processed_ticks);
+                    ack_received_ticks.erase(exec.order_id);
                 }
                 order_sent_ticks.erase(exec.order_id);
                 break;
@@ -411,7 +453,9 @@ extern "C" NTS_NOINLINE void run_pipeline(nts::MdReceiver& ref_md, nts::MdReceiv
     nts::instrument::StatsCalculator::print_report(tracer);
 #endif
     print_trading_report(ref_md, target_md, oms, book, elapsed_s, iterations);
-    print_tick_sampler_report("order_sent_ticks operator[]", order_sent_map_ticks);
+    print_tick_sampler_report("order_sent_ticks set", order_sent_map_ticks);
+    print_order_tick_ring_report("order_sent_ticks ring", order_sent_ticks);
+    print_order_tick_ring_report("ack_received_ticks ring", ack_received_ticks);
 
     if (save_report) {
         const std::string dir = live_results_dir();
@@ -426,7 +470,9 @@ extern "C" NTS_NOINLINE void run_pipeline(nts::MdReceiver& ref_md, nts::MdReceiv
         nts::instrument::StatsCalculator::print_report(tracer, f);
 #endif
         print_trading_report(ref_md, target_md, oms, book, elapsed_s, iterations, f);
-        print_tick_sampler_report("order_sent_ticks operator[]", order_sent_map_ticks, f);
+        print_tick_sampler_report("order_sent_ticks set", order_sent_map_ticks, f);
+        print_order_tick_ring_report("order_sent_ticks ring", order_sent_ticks, f);
+        print_order_tick_ring_report("ack_received_ticks ring", ack_received_ticks, f);
         fclose(f);
         fprintf(stderr, "[pipeline] report saved to %s\n", path.c_str());
     }
