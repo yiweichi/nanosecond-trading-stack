@@ -5,18 +5,10 @@
 #include "nts/oms.h"
 #include "nts/order_gateway.h"
 #include "nts/orderbook.h"
+#include "nts/pipeline_utils.h"
 #include "nts/strategy.h"
 
-#include <sys/stat.h>
 #include <csignal>
-#include <algorithm>
-#include <array>
-#include <cstdio>
-#include <cstdlib>
-#include <cstring>
-#include <ctime>
-#include <string>
-#include <vector>
 
 static volatile sig_atomic_t running = 1;
 
@@ -30,122 +22,6 @@ static void on_signal(int) {
 }
 
 static constexpr nts::Price EXIT_HALF_SPREAD = 1.0;
-
-struct TickSampleStats {
-    uint64_t min_ticks  = 0;
-    uint64_t max_ticks  = 0;
-    uint64_t mean_ticks = 0;
-    uint64_t p50_ticks  = 0;
-    uint64_t p99_ticks  = 0;
-    size_t   samples    = 0;
-    size_t   dropped    = 0;
-};
-
-struct TickSampler {
-    static constexpr size_t MAX_SAMPLES = 1u << 20;
-
-    std::vector<uint64_t> samples;
-    size_t                dropped = 0;
-
-    void reserve() { samples.reserve(MAX_SAMPLES); }
-
-    void add(uint64_t ticks) {
-        if (samples.size() < MAX_SAMPLES) {
-            samples.push_back(ticks);
-        } else {
-            dropped++;
-        }
-    }
-};
-
-static TickSampleStats compute_tick_stats(const TickSampler& sampler) {
-    TickSampleStats stats;
-    stats.samples = sampler.samples.size();
-    stats.dropped = sampler.dropped;
-    if (sampler.samples.empty()) return stats;
-
-    std::vector<uint64_t> sorted = sampler.samples;
-    std::sort(sorted.begin(), sorted.end());
-
-    uint64_t sum = 0;
-    for (uint64_t v : sorted) sum += v;
-
-    stats.min_ticks  = sorted.front();
-    stats.max_ticks  = sorted.back();
-    stats.mean_ticks = sum / sorted.size();
-    stats.p50_ticks  = sorted[(sorted.size() - 1) / 2];
-    stats.p99_ticks  = sorted[((sorted.size() - 1) * 99) / 100];
-    return stats;
-}
-
-static void print_tick_sampler_report(const char* name, const TickSampler& sampler,
-                                      FILE* out = stderr) {
-    const TickSampleStats stats = compute_tick_stats(sampler);
-    if (stats.samples == 0) {
-        fprintf(out, "[profile] %s: no samples", name);
-        if (stats.dropped > 0) fprintf(out, " (%zu dropped)", stats.dropped);
-        fprintf(out, "\n");
-        return;
-    }
-
-    fprintf(out,
-            "[profile] %s: samples=%zu dropped=%zu | ticks min=%llu p50=%llu mean=%llu "
-            "p99=%llu max=%llu | ns p50=%llu p99=%llu max=%llu\n",
-            name, stats.samples, stats.dropped,
-            static_cast<unsigned long long>(stats.min_ticks),
-            static_cast<unsigned long long>(stats.p50_ticks),
-            static_cast<unsigned long long>(stats.mean_ticks),
-            static_cast<unsigned long long>(stats.p99_ticks),
-            static_cast<unsigned long long>(stats.max_ticks),
-            static_cast<unsigned long long>(nts::instrument::ticks_to_ns(stats.p50_ticks)),
-            static_cast<unsigned long long>(nts::instrument::ticks_to_ns(stats.p99_ticks)),
-            static_cast<unsigned long long>(nts::instrument::ticks_to_ns(stats.max_ticks)));
-}
-
-class OrderTickRing {
-public:
-    static constexpr size_t CAPACITY = nts::OMS::ORDER_MAP_SIZE;
-    static_assert((CAPACITY & (CAPACITY - 1)) == 0, "OrderTickRing capacity must be power-of-two");
-
-    void set(nts::OrderId id, uint64_t ticks) {
-        Entry& entry = entries_[index(id)];
-        if (entry.occupied && entry.id != id) collisions_++;
-        entry = Entry{id, ticks, true};
-    }
-
-    bool get(nts::OrderId id, uint64_t& ticks) const {
-        const Entry& entry = entries_[index(id)];
-        if (!entry.occupied || entry.id != id) return false;
-        ticks = entry.ticks;
-        return true;
-    }
-
-    void erase(nts::OrderId id) {
-        Entry& entry = entries_[index(id)];
-        if (entry.occupied && entry.id == id) entry.occupied = false;
-    }
-
-    size_t collisions() const { return collisions_; }
-
-private:
-    struct Entry {
-        nts::OrderId id       = 0;
-        uint64_t     ticks    = 0;
-        bool         occupied = false;
-    };
-
-    static constexpr size_t index(nts::OrderId id) {
-        return static_cast<size_t>(id) & (CAPACITY - 1);
-    }
-
-    std::array<Entry, CAPACITY> entries_ = {};
-    size_t                      collisions_ = 0;
-};
-
-static void print_order_tick_ring_report(const char* name, const OrderTickRing& ring,
-                                         FILE* out = stderr) {
-    fprintf(out, "[profile] %s: collisions=%zu\n", name, ring.collisions());
-}
 
 static bool build_exit_order(const nts::OrderBook& book, int32_t position, nts::Side& side,
                              nts::Price& price, nts::Qty& qty) {
@@ -165,112 +41,13 @@ static bool build_exit_order(const nts::OrderBook& book, int32_t position, nts::
     return price <= reference + EXIT_HALF_SPREAD;
 }
 
-struct Args {
-    uint16_t    md_port       = nts::DEFAULT_PORT;
-    const char* md_group      = nts::MdReceiver::DEFAULT_MULTICAST_GROUP;
-    uint16_t    ref_port      = 12347;
-    const char* ref_group     = "239.1.1.2";
-    int         duration_sec  = 10;
-    const char* exchange_host = "127.0.0.1";
-    uint16_t    order_port    = nts::OrderGateway::DEFAULT_ORDER_PORT;
-    bool        save_report   = false;
-};
-
-static Args parse_args(int argc, char* argv[]) {
-    Args a;
-    for (int i = 1; i < argc; i++) {
-        if (std::strcmp(argv[i], "--exchange-host") == 0 && i + 1 < argc) {
-            a.exchange_host = argv[++i];
-        } else if (std::strcmp(argv[i], "--order-port") == 0 && i + 1 < argc) {
-            a.order_port = static_cast<uint16_t>(std::strtol(argv[++i], nullptr, 10));
-        } else if ((std::strcmp(argv[i], "--port") == 0 ||
-                    std::strcmp(argv[i], "--md-port") == 0) &&
-                   i + 1 < argc) {
-            a.md_port = static_cast<uint16_t>(std::strtol(argv[++i], nullptr, 10));
-        } else if (std::strcmp(argv[i], "--md-group") == 0 && i + 1 < argc) {
-            a.md_group = argv[++i];
-        } else if (std::strcmp(argv[i], "--ref-port") == 0 && i + 1 < argc) {
-            a.ref_port = static_cast<uint16_t>(std::strtol(argv[++i], nullptr, 10));
-        } else if (std::strcmp(argv[i], "--ref-group") == 0 && i + 1 < argc) {
-            a.ref_group = argv[++i];
-        } else if (std::strcmp(argv[i], "--duration") == 0 && i + 1 < argc) {
-            a.duration_sec = static_cast<int>(std::strtol(argv[++i], nullptr, 10));
-        } else if (std::strcmp(argv[i], "--save-report") == 0) {
-            a.save_report = true;
-        }
-    }
-    return a;
-}
-
-static const char* live_results_dir() {
-#if defined(__APPLE__)
-    return "results/live/mac";
-#elif defined(__linux__)
-    return "results/live/linux";
-#else
-    return "results/live/other";
-#endif
-}
-
-static void mkdirs(const std::string& path) {
-    std::string partial;
-    for (char c : path) {
-        partial += c;
-        if (c == '/') mkdir(partial.c_str(), 0755);
-    }
-    mkdir(path.c_str(), 0755);
-}
-
-static std::string utc_timestamp() {
-    time_t    now = time(nullptr);
-    struct tm t;
-    gmtime_r(&now, &t);
-    char ts[32];
-    snprintf(ts, sizeof(ts), "%04d%02d%02dT%02d%02d%02d", t.tm_year + 1900, t.tm_mon + 1, t.tm_mday,
-             t.tm_hour, t.tm_min, t.tm_sec);
-    return ts;
-}
-
-static void print_trading_report(const nts::MdReceiver& ref_md, const nts::MdReceiver& target_md,
-                                 nts::OMS& oms, const nts::OrderBook& book, double elapsed_s,
-                                 uint64_t iterations, FILE* out = stderr) {
-    fprintf(out, "\n[pipeline] stopped after %.2f seconds, %llu iterations\n", elapsed_s,
-            static_cast<unsigned long long>(iterations));
-    fprintf(out, "[pipeline] reference packets: %llu recv, %llu gaps | refs: %llu\n",
-            static_cast<unsigned long long>(ref_md.packets_received()),
-            static_cast<unsigned long long>(ref_md.packets_dropped()),
-            static_cast<unsigned long long>(ref_md.references_received()));
-    fprintf(out, "[pipeline] target MD packets: %llu recv, %llu gaps | quotes: %llu\n",
-            static_cast<unsigned long long>(target_md.packets_received()),
-            static_cast<unsigned long long>(target_md.packets_dropped()),
-            static_cast<unsigned long long>(target_md.quotes_received()));
-    double hit_rate = (oms.total_accepted_orders() > 0)
-                          ? 100.0 * static_cast<double>(oms.total_filled_orders()) /
-                                static_cast<double>(oms.total_accepted_orders())
-                          : 0.0;
-    fprintf(out,
-            "[pipeline] Orders: %zu total, %zu accepted, %zu filled, %zu missed IOC, %zu rejected "
-            "(%.1f%% hit)\n",
-            oms.total_orders(), oms.total_accepted_orders(), oms.total_filled_orders(),
-            oms.total_missed_ioc(), oms.total_rejects(), hit_rate);
-    fprintf(
-        out,
-        "[pipeline] Fills:  %zu events, %u qty (%zu buys / %u buy qty, %zu sells / %u sell qty)\n",
-        oms.total_fills(), oms.total_filled_qty(), oms.total_buy_fills(), oms.total_buy_qty(),
-        oms.total_sell_fills(), oms.total_sell_qty());
-    fprintf(out, "[pipeline] PnL:    realized %.4f, liquidation %.4f, total %.4f\n",
-            oms.total_pnl(book.mid_price()) - oms.liquidation_pnl(), oms.liquidation_pnl(),
-            oms.total_pnl(book.mid_price()));
-}
-
 /// Isolated market-data -> strategy -> order path for PMU attribution.
-extern "C" __attribute__((no_stack_protector)) NTS_PROFILE_NOINLINE void process_market_signal_and_order(
+extern "C" NTS_PROFILE_NOINLINE void process_market_signal_and_order(
     bool got_ref_data, const nts::MdMsg& ref_msg, uint64_t ref_receive_ticks, bool got_target_data,
     const nts::MdMsg& target_msg, uint64_t target_receive_ticks, nts::OrderBook& book,
     nts::ImbalanceStrategy& strategy, nts::OMS& oms, nts::OrderGateway& exchange,
     nts::instrument::ActiveTracer& tracer, uint64_t& latest_source_exchange_tick,
-    uint64_t& latest_md_receive_ticks,
-    OrderTickRing& order_sent_ticks, TickSampler& order_sent_map_ticks) {
+    uint64_t& latest_md_receive_ticks, nts::OrderTickRing& order_sent_ticks) {
     using nts::instrument::Hop;
 
     bool reference_updated = false;
@@ -324,10 +101,7 @@ extern "C" __attribute__((no_stack_protector)) NTS_PROFILE_NOINLINE void process
             (latest_md_receive_ticks != 0 && sent_ticks >= latest_md_receive_ticks)
                 ? nts::instrument::ticks_to_ns(sent_ticks - latest_md_receive_ticks)
                 : 0;
-        const uint64_t map_start_ticks = nts::instrument::raw_ticks();
         order_sent_ticks.set(order.id, sent_ticks);
-        const uint64_t map_end_ticks   = nts::instrument::raw_ticks();
-        order_sent_map_ticks.add(map_end_ticks - map_start_ticks);
         tracer.record(nts::instrument::Hop::OrderSent);
     };
 
@@ -360,10 +134,8 @@ extern "C" NTS_NOINLINE void run_pipeline(nts::MdReceiver& ref_md, nts::MdReceiv
     uint64_t deadline_ns = start_ns + static_cast<uint64_t>(duration_sec) * 1'000'000'000ULL;
     uint64_t iterations  = 0;
 
-    OrderTickRing order_sent_ticks;
-    OrderTickRing ack_received_ticks;
-    TickSampler order_sent_map_ticks;
-    order_sent_map_ticks.reserve();
+    nts::OrderTickRing order_sent_ticks;
+    nts::OrderTickRing ack_received_ticks;
 
     uint64_t latest_source_exchange_tick = 0;
     uint64_t latest_md_receive_ticks     = 0;
@@ -427,7 +199,7 @@ extern "C" NTS_NOINLINE void run_pipeline(nts::MdReceiver& ref_md, nts::MdReceiv
                                             got_target_data, target_msg, target_receive_ticks,
                                             book, strategy, oms, exchange, tracer,
                                             latest_source_exchange_tick, latest_md_receive_ticks,
-                                            order_sent_ticks, order_sent_map_ticks);
+                                            order_sent_ticks);
 
             nts::ExecutionReport exec;
             while (exchange.poll_execution(exec)) {
@@ -453,14 +225,13 @@ extern "C" NTS_NOINLINE void run_pipeline(nts::MdReceiver& ref_md, nts::MdReceiv
     nts::instrument::StatsCalculator::print_report(tracer);
 #endif
     print_trading_report(ref_md, target_md, oms, book, elapsed_s, iterations);
-    print_tick_sampler_report("order_sent_ticks set", order_sent_map_ticks);
     print_order_tick_ring_report("order_sent_ticks ring", order_sent_ticks);
     print_order_tick_ring_report("ack_received_ticks ring", ack_received_ticks);
 
     if (save_report) {
-        const std::string dir = live_results_dir();
-        mkdirs(dir);
-        const std::string path = dir + "/" + utc_timestamp() + ".txt";
+        const std::string dir = nts::live_results_dir();
+        nts::mkdirs(dir);
+        const std::string path = dir + "/" + nts::utc_timestamp() + ".txt";
         FILE*             f    = fopen(path.c_str(), "w");
         if (f == nullptr) {
             perror("fopen save report");
@@ -470,7 +241,6 @@ extern "C" NTS_NOINLINE void run_pipeline(nts::MdReceiver& ref_md, nts::MdReceiv
         nts::instrument::StatsCalculator::print_report(tracer, f);
 #endif
         print_trading_report(ref_md, target_md, oms, book, elapsed_s, iterations, f);
-        print_tick_sampler_report("order_sent_ticks set", order_sent_map_ticks, f);
         print_order_tick_ring_report("order_sent_ticks ring", order_sent_ticks, f);
         print_order_tick_ring_report("ack_received_ticks ring", ack_received_ticks, f);
         fclose(f);
@@ -479,7 +249,7 @@ extern "C" NTS_NOINLINE void run_pipeline(nts::MdReceiver& ref_md, nts::MdReceiv
 }
 
 int main(int argc, char* argv[]) {
-    Args args = parse_args(argc, argv);
+    nts::Args args = nts::parse_args(argc, argv);
 
     signal(SIGINT, on_signal);
     signal(SIGTERM, on_signal);

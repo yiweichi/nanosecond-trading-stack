@@ -14,6 +14,8 @@ option(NTS_ENABLE_TRACING "Enable hop-by-hop latency tracing" ON)
 add_library(nts_core STATIC
     src/instrument/tracer.cpp
     src/instrument/stats.cpp
+    src/instrument/tick_sampler.cpp
+    src/pipeline_utils.cpp
     src/market_data.cpp
     src/orderbook.cpp
     src/strategy.cpp
