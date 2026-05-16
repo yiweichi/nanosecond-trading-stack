@@ -84,17 +84,14 @@ inline double calibrate_ns_per_tick() {
 
     // ~50 ms calibration window — long enough to dwarf clock_gettime jitter,
     // short enough not to delay process startup noticeably.
-    struct timespec sleep_req {
-        0, 50'000'000L
-    };
+    struct timespec sleep_req{0, 50'000'000L};
     nanosleep(&sleep_req, nullptr);
 
     uint64_t t1 = raw_ticks();
     clock_gettime(CLOCK_MONOTONIC, &ts1);
 
-    uint64_t ns =
-        static_cast<uint64_t>(ts1.tv_sec - ts0.tv_sec) * 1'000'000'000ULL +
-        static_cast<uint64_t>(ts1.tv_nsec - ts0.tv_nsec);
+    uint64_t ns    = static_cast<uint64_t>(ts1.tv_sec - ts0.tv_sec) * 1'000'000'000ULL +
+                     static_cast<uint64_t>(ts1.tv_nsec - ts0.tv_nsec);
     uint64_t ticks = t1 - t0;
     if (ticks == 0) return 1.0;  // pathological — fall back to "1 tick = 1 ns"
     return static_cast<double>(ns) / static_cast<double>(ticks);

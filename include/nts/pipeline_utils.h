@@ -6,8 +6,8 @@
 #include "nts/orderbook.h"
 
 #include <array>
-#include <cstdio>
 #include <cstdint>
+#include <cstdio>
 #include <string>
 
 namespace nts {
@@ -27,9 +27,9 @@ struct OrderTickRing {
     static constexpr size_t CAPACITY = nts::OMS::ORDER_MAP_SIZE;
     static_assert((CAPACITY & (CAPACITY - 1)) == 0, "OrderTickRing capacity must be power-of-two");
 
-    void set(nts::OrderId id, uint64_t ticks);
-    bool get(nts::OrderId id, uint64_t& ticks) const;
-    void erase(nts::OrderId id);
+    void   set(nts::OrderId id, uint64_t ticks);
+    bool   get(nts::OrderId id, uint64_t& ticks) const;
+    void   erase(nts::OrderId id);
     size_t collisions() const;
 
 private:
@@ -43,18 +43,17 @@ private:
         return static_cast<size_t>(id) & (CAPACITY - 1);
     }
 
-    std::array<Entry, CAPACITY> entries_ = {};
+    std::array<Entry, CAPACITY> entries_    = {};
     size_t                      collisions_ = 0;
 };
 
 Args parse_args(int argc, char* argv[]);
-void print_order_tick_ring_report(const char* name, const OrderTickRing& ring,
-                                  FILE* out = stderr);
+void print_order_tick_ring_report(const char* name, const OrderTickRing& ring, FILE* out = stderr);
 void print_trading_report(const nts::MdReceiver& ref_md, const nts::MdReceiver& target_md,
                           nts::OMS& oms, const nts::OrderBook& book, double elapsed_s,
                           uint64_t iterations, FILE* out = stderr);
 const char* live_results_dir();
-void mkdirs(const std::string& path);
+void        mkdirs(const std::string& path);
 std::string utc_timestamp();
 
 }  // namespace nts

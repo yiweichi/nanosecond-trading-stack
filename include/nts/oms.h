@@ -1,8 +1,8 @@
 #pragma once
 
+#include <cmath>
 #include <cstddef>
 #include <cstdint>
-#include <cmath>
 #include "common.h"
 
 namespace nts {
@@ -50,7 +50,7 @@ public:
     void on_execution(const ExecutionReport& report);
 
     // ── Risk ─────────────────────────────────────────────────────
-    void set_reference_price(Price price) { ref_price_ = price; }
+    void                   set_reference_price(Price price) { ref_price_ = price; }
     NTS_ALWAYS_INLINE bool check_risk(Side side, Price price, Qty qty) const;
 
     // ── Position & PnL ───────────────────────────────────────────
@@ -121,13 +121,13 @@ private:
 
     // Hash map helpers (Fibonacci hashing + linear probing)
     NTS_ALWAYS_INLINE size_t map_hash(OrderId id) const;
-    size_t map_find(OrderId id) const;
-    NTS_ALWAYS_INLINE void map_insert(OrderId id, uint32_t slot);
-    void   map_remove(OrderId id);
+    size_t                   map_find(OrderId id) const;
+    NTS_ALWAYS_INLINE void   map_insert(OrderId id, uint32_t slot);
+    void                     map_remove(OrderId id);
 
     NTS_ALWAYS_INLINE size_t alloc_slot();
-    void   free_slot(size_t slot, OrderId id);
-    void   apply_trading_fill(Side side, Qty qty, Price price);
+    void                     free_slot(size_t slot, OrderId id);
+    void                     apply_trading_fill(Side side, Qty qty, Price price);
 };
 
 NTS_ALWAYS_INLINE size_t OMS::map_hash(OrderId id) const {
