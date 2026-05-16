@@ -49,8 +49,7 @@ void print_tick_sampler_report(const char* name, const TickSampler& sampler, FIL
     fprintf(out,
             "[profile] %s: samples=%zu dropped=%zu | ticks min=%llu p50=%llu mean=%llu "
             "p99=%llu max=%llu | ns p50=%llu p99=%llu max=%llu\n",
-            name, stats.samples, stats.dropped,
-            static_cast<unsigned long long>(stats.min_ticks),
+            name, stats.samples, stats.dropped, static_cast<unsigned long long>(stats.min_ticks),
             static_cast<unsigned long long>(stats.p50_ticks),
             static_cast<unsigned long long>(stats.mean_ticks),
             static_cast<unsigned long long>(stats.p99_ticks),

@@ -28,7 +28,6 @@ struct TickSampler {
 };
 
 TickSampleStats compute_tick_stats(const TickSampler& sampler);
-void print_tick_sampler_report(const char* name, const TickSampler& sampler,
-                               FILE* out = stderr);
+void print_tick_sampler_report(const char* name, const TickSampler& sampler, FILE* out = stderr);
 
 }  // namespace nts::instrument

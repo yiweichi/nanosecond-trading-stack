@@ -125,9 +125,8 @@ extern "C" NTS_PROFILE_NOINLINE void process_market_signal_and_order(
 
 /// Core pipeline loop.
 extern "C" NTS_NOINLINE void run_pipeline(nts::MdReceiver& ref_md, nts::MdReceiver& target_md,
-                                          nts::OrderBook& book,
-                                          nts::ImbalanceStrategy& strategy, nts::OMS& oms,
-                                          nts::OrderGateway& exchange,
+                                          nts::OrderBook& book, nts::ImbalanceStrategy& strategy,
+                                          nts::OMS& oms, nts::OrderGateway& exchange,
                                           nts::instrument::ActiveTracer& tracer, int duration_sec,
                                           bool save_report) {
     uint64_t start_ns    = nts::instrument::now_ns();
@@ -153,7 +152,8 @@ extern "C" NTS_NOINLINE void run_pipeline(nts::MdReceiver& ref_md, nts::MdReceiv
         switch (exec.exec_type) {
             case nts::ExecType::NewAck:
                 if (has_sent_ticks) {
-                    tracer.record_order_ack(sent_ticks, report_received_ticks, report_processed_ticks);
+                    tracer.record_order_ack(sent_ticks, report_received_ticks,
+                                            report_processed_ticks);
                     order_sent_ticks.erase(exec.order_id);
                     ack_received_ticks.set(exec.order_id, report_received_ticks);
                 }
@@ -164,7 +164,8 @@ extern "C" NTS_NOINLINE void run_pipeline(nts::MdReceiver& ref_md, nts::MdReceiv
             case nts::ExecType::CancelAck:
             case nts::ExecType::CancelReject:
                 if (has_ack_ticks) {
-                    tracer.record_ack_fill(ack_ticks, report_received_ticks, report_processed_ticks);
+                    tracer.record_ack_fill(ack_ticks, report_received_ticks,
+                                           report_processed_ticks);
                     ack_received_ticks.erase(exec.order_id);
                 }
                 order_sent_ticks.erase(exec.order_id);
@@ -195,11 +196,10 @@ extern "C" NTS_NOINLINE void run_pipeline(nts::MdReceiver& ref_md, nts::MdReceiv
 
             // spin_for_ns(50000);
 
-            process_market_signal_and_order(got_ref_data, ref_msg, ref_receive_ticks,
-                                            got_target_data, target_msg, target_receive_ticks,
-                                            book, strategy, oms, exchange, tracer,
-                                            latest_source_exchange_tick, latest_md_receive_ticks,
-                                            order_sent_ticks);
+            process_market_signal_and_order(
+                got_ref_data, ref_msg, ref_receive_ticks, got_target_data, target_msg,
+                target_receive_ticks, book, strategy, oms, exchange, tracer,
+                latest_source_exchange_tick, latest_md_receive_ticks, order_sent_ticks);
 
             nts::ExecutionReport exec;
             while (exchange.poll_execution(exec)) {
