@@ -5,10 +5,21 @@
 namespace nts::instrument {
 
 enum class PerfEvent : uint64_t {
-    CpuCycles    = 0,
-    Instructions = 1,
-    CacheMisses  = 3,
-    BranchMisses = 5,
+    CpuCycles      = 0,
+    Instructions   = 1,
+    CacheReferences = 2,
+    CacheMisses    = 3,
+    Branches       = 4,
+    BranchMisses   = 5,
+    PageFaults     = 6,
+    L1DReferences  = 100,
+    L1DMisses      = 101,
+    L1IReferences  = 102,
+    L1IMisses      = 103,
+    L2References   = 104,
+    L2Misses       = 105,
+    L3References   = 106,
+    L3Misses       = 107,
 };
 
 class PerfCounter {
