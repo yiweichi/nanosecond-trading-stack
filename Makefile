@@ -15,6 +15,43 @@
 #   make lint         Run clang-tidy on all sources
 #   make pr           Run local pre-PR checks (format, lint, build, tests)
 #
+# Build-time configuration variables:
+#   BUILD_TYPE        CMake build type. Default: Debug
+#                     Common values: Debug, Release, RelWithDebInfo
+#   STACK_PROTECTOR   Extra compiler flag for stack protection.
+#                     Default: -fstack-protector
+#   EXTRA_CXX_FLAGS   Additional compiler flags appended to CMAKE_CXX_FLAGS.
+#                     Useful for ad-hoc profiling or local experiments.
+#   CXX_FLAGS         Full compiler flag string passed into CMake.
+#                     Usually derived from STACK_PROTECTOR + EXTRA_CXX_FLAGS.
+#   IPO               CMake interprocedural optimization toggle.
+#                     Default: OFF for debug/release, ON for profile.
+#   TRACING           Enables hop-by-hop latency tracing in the C++ code.
+#                     Default: ON. Set OFF to reduce instrumentation overhead.
+#   PROFILE_CXX_FLAGS Profiling-oriented flags used by make profile.
+#                     Includes symbols, frame pointers, and profiling scope symbols.
+#   PROFILE_IPO       IPO toggle used by make profile.
+#                     Default: ON.
+#   NTS_ENABLE_PMU_PROFILE  CMake option that enables PMU counter instrumentation.
+#                           Default: OFF.
+#   NTS_ENABLE_TRACING      CMake option that enables tracing instrumentation.
+#                           Default: ON.
+#
+# Runtime environment / CLI overrides:
+#   PORT          UDP market data port used by run/gen/trade.
+#   ORDER_PORT    Order gateway port used by trade.
+#   MD_GROUP      Multicast group for market data.
+#   DURATION      Run duration in seconds.
+#   RATE          Message rate used by gen.
+#   SCENARIO      Scenario name for matching benchmarks.
+#   DEPTH         Order book depth for benchmark scenarios.
+#   LEVELS        Number of price levels for benchmark scenarios.
+#   ORDERS        Number of orders for benchmark scenarios.
+#   REPEAT        Repetition count for benchmark profiling.
+#   CLANG_FORMAT  clang-format executable name/path.
+#   CLANG_TIDY    clang-tidy executable name/path.
+#   CARGO         cargo executable name/path for Rust-related targets.
+#
 # The pipeline requires two terminals:
 #   Terminal 1:  make gen
 #   Terminal 2:  make run
@@ -52,7 +89,7 @@ ALL_FILES := $(SRCS) $(HDRS)
 .PHONY: configure debug release profile clean match-bench match-scenario match-profile run trade gen fmt fmt-check lint rust-fmt-check rust-clippy rust-test rust-pr pr
 
 configure:
-	@mkdir -p $(BUILD_DIR) && cd $(BUILD_DIR) && cmake .. -DCMAKE_BUILD_TYPE=$(BUILD_TYPE) -DCMAKE_CXX_FLAGS="$(strip $(CXX_FLAGS))" -DCMAKE_INTERPROCEDURAL_OPTIMIZATION=$(IPO) -DNTS_ENABLE_TRACING=$(TRACING) && make -j
+	@mkdir -p $(BUILD_DIR) && cd $(BUILD_DIR) && cmake .. -DCMAKE_BUILD_TYPE=$(BUILD_TYPE) -DCMAKE_CXX_FLAGS="$(strip $(CXX_FLAGS))" -DCMAKE_INTERPROCEDURAL_OPTIMIZATION=$(IPO) -DNTS_ENABLE_TRACING=$(TRACING) -DNTS_ENABLE_PMU_PROFILE=$(NTS_ENABLE_PMU_PROFILE) && make -j
 
 release: BUILD_TYPE=Release
 release: IPO=OFF
