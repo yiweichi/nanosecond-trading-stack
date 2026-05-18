@@ -5,6 +5,7 @@
 #include "nts/oms.h"
 #include "nts/order_gateway.h"
 #include "nts/orderbook.h"
+#include "nts/perf_counter.h"
 #include "nts/pipeline_utils.h"
 #include "nts/strategy.h"
 
@@ -41,13 +42,30 @@ static bool build_exit_order(const nts::OrderBook& book, int32_t position, nts::
     return price <= reference + EXIT_HALF_SPREAD;
 }
 
+#ifdef NTS_ENABLE_PMU_PROFILE
+struct PmuProfileTotals {
+    uint64_t calls  = 0;
+    uint64_t cycles = 0;
+};
+#endif
+
 /// Isolated market-data -> strategy -> order path for PMU attribution.
 extern "C" NTS_PROFILE_NOINLINE void process_market_signal_and_order(
     bool got_ref_data, const nts::MdMsg& ref_msg, uint64_t ref_receive_ticks, bool got_target_data,
     const nts::MdMsg& target_msg, uint64_t target_receive_ticks, nts::OrderBook& book,
     nts::ImbalanceStrategy& strategy, nts::OMS& oms, nts::OrderGateway& exchange,
     nts::instrument::ActiveTracer& tracer, uint64_t& latest_source_exchange_tick,
-    uint64_t& latest_md_receive_ticks, nts::OrderTickRing& order_sent_ticks) {
+    uint64_t& latest_md_receive_ticks, nts::OrderTickRing& order_sent_ticks
+#ifdef NTS_ENABLE_PMU_PROFILE
+    ,
+    PmuProfileTotals& pmu_totals
+#endif
+) {
+#ifdef NTS_ENABLE_PMU_PROFILE
+    static nts::instrument::PerfCounter cycles(nts::instrument::PerfEvent::CpuCycles);
+    cycles.reset();
+    cycles.enable();
+#endif
     using nts::instrument::Hop;
 
     bool reference_updated = false;
@@ -121,6 +139,12 @@ extern "C" NTS_PROFILE_NOINLINE void process_market_signal_and_order(
             exchange.submit_order(*order);
         }
     }
+
+#ifdef NTS_ENABLE_PMU_PROFILE
+    cycles.disable();
+    pmu_totals.calls++;
+    pmu_totals.cycles += cycles.read_value();
+#endif
 }
 
 /// Core pipeline loop.
@@ -138,6 +162,10 @@ extern "C" NTS_NOINLINE void run_pipeline(nts::MdReceiver& ref_md, nts::MdReceiv
 
     uint64_t latest_source_exchange_tick = 0;
     uint64_t latest_md_receive_ticks     = 0;
+
+#ifdef NTS_ENABLE_PMU_PROFILE
+    PmuProfileTotals pmu_totals;
+#endif
 
     auto process_execution = [&](const nts::ExecutionReport& exec) {
         const uint64_t report_received_ticks = nts::instrument::raw_ticks();
@@ -199,7 +227,12 @@ extern "C" NTS_NOINLINE void run_pipeline(nts::MdReceiver& ref_md, nts::MdReceiv
             process_market_signal_and_order(
                 got_ref_data, ref_msg, ref_receive_ticks, got_target_data, target_msg,
                 target_receive_ticks, book, strategy, oms, exchange, tracer,
-                latest_source_exchange_tick, latest_md_receive_ticks, order_sent_ticks);
+                latest_source_exchange_tick, latest_md_receive_ticks, order_sent_ticks
+#ifdef NTS_ENABLE_PMU_PROFILE
+                ,
+                pmu_totals
+#endif
+            );
 
             nts::ExecutionReport exec;
             while (exchange.poll_execution(exec)) {
@@ -224,6 +257,11 @@ extern "C" NTS_NOINLINE void run_pipeline(nts::MdReceiver& ref_md, nts::MdReceiv
 #ifdef NTS_ENABLE_TRACING
     nts::instrument::StatsCalculator::print_report(tracer);
 #endif
+#ifdef NTS_ENABLE_PMU_PROFILE
+    fprintf(stderr, "[pmu] process_market_signal_and_order calls=%llu cycles_sum=%llu\n",
+            static_cast<unsigned long long>(pmu_totals.calls),
+            static_cast<unsigned long long>(pmu_totals.cycles));
+#endif
     print_trading_report(ref_md, target_md, oms, book, elapsed_s, iterations);
     print_order_tick_ring_report("order_sent_ticks ring", order_sent_ticks);
     print_order_tick_ring_report("ack_received_ticks ring", ack_received_ticks);
@@ -239,6 +277,11 @@ extern "C" NTS_NOINLINE void run_pipeline(nts::MdReceiver& ref_md, nts::MdReceiv
         }
 #ifdef NTS_ENABLE_TRACING
         nts::instrument::StatsCalculator::print_report(tracer, f);
+#endif
+#ifdef NTS_ENABLE_PMU_PROFILE
+        fprintf(f, "[pmu] process_market_signal_and_order calls=%llu cycles_sum=%llu\n",
+                static_cast<unsigned long long>(pmu_totals.calls),
+                static_cast<unsigned long long>(pmu_totals.cycles));
 #endif
         print_trading_report(ref_md, target_md, oms, book, elapsed_s, iterations, f);
         print_order_tick_ring_report("order_sent_ticks ring", order_sent_ticks, f);

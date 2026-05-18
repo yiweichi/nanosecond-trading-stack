@@ -10,11 +10,13 @@ if(NOT CMAKE_BUILD_TYPE)
 endif()
 
 option(NTS_ENABLE_TRACING "Enable hop-by-hop latency tracing" ON)
+option(NTS_ENABLE_PMU_PROFILE "Enable PMU profiling counters" OFF)
 
 add_library(nts_core STATIC
     src/instrument/tracer.cpp
     src/instrument/stats.cpp
     src/instrument/tick_sampler.cpp
+    src/perf_counter.cpp
     src/pipeline_utils.cpp
     src/market_data.cpp
     src/orderbook.cpp
@@ -30,6 +32,10 @@ target_compile_options(nts_core PRIVATE -Wall -Wextra -Wpedantic)
 
 if(NTS_ENABLE_TRACING)
     target_compile_definitions(nts_core PUBLIC NTS_ENABLE_TRACING)
+endif()
+
+if(NTS_ENABLE_PMU_PROFILE)
+    target_compile_definitions(nts_core PUBLIC NTS_ENABLE_PMU_PROFILE)
 endif()
 
 # Main pipeline executable
