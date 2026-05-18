@@ -42,67 +42,6 @@ static bool build_exit_order(const nts::OrderBook& book, int32_t position, nts::
     return price <= reference + EXIT_HALF_SPREAD;
 }
 
-#ifdef NTS_ENABLE_PMU_PROFILE
-struct PmuProfileTotals {
-    uint64_t calls            = 0;
-    uint64_t cycles           = 0;
-    uint64_t instructions     = 0;
-    uint64_t cache_references = 0;
-    uint64_t cache_misses     = 0;
-    uint64_t branches         = 0;
-    uint64_t branch_misses    = 0;
-    uint64_t page_faults      = 0;
-    uint64_t l1d_references   = 0;
-    uint64_t l1d_misses       = 0;
-    uint64_t l1i_references   = 0;
-    uint64_t l1i_misses       = 0;
-    uint64_t l2_references    = 0;
-    uint64_t l2_misses        = 0;
-    uint64_t l3_references    = 0;
-    uint64_t l3_misses        = 0;
-};
-
-static double pmu_ratio(uint64_t numerator, uint64_t denominator) {
-    return denominator == 0 ? 0.0 : 100.0 * static_cast<double>(numerator) /
-                                      static_cast<double>(denominator);
-}
-
-static void print_pmu_profile_totals(const PmuProfileTotals& totals, FILE* out) {
-    fprintf(out,
-            "[pmu] process_market_signal_and_order calls=%llu cycles=%llu "
-            "instructions=%llu cache-references=%llu cache-misses=%llu "
-            "cache-miss-rate=%.4f%% branches=%llu branch-misses=%llu "
-            "branch-miss-rate=%.4f%% page-faults=%llu\n",
-            static_cast<unsigned long long>(totals.calls),
-            static_cast<unsigned long long>(totals.cycles),
-            static_cast<unsigned long long>(totals.instructions),
-            static_cast<unsigned long long>(totals.cache_references),
-            static_cast<unsigned long long>(totals.cache_misses),
-            pmu_ratio(totals.cache_misses, totals.cache_references),
-            static_cast<unsigned long long>(totals.branches),
-            static_cast<unsigned long long>(totals.branch_misses),
-            pmu_ratio(totals.branch_misses, totals.branches),
-            static_cast<unsigned long long>(totals.page_faults));
-    fprintf(out,
-            "[pmu] cache-levels L1D-references=%llu L1D-misses=%llu L1D-miss-rate=%.4f%% "
-            "L1I-references=%llu L1I-misses=%llu L1I-miss-rate=%.4f%% "
-            "L2-references=%llu L2-misses=%llu L2-miss-rate=%.4f%% "
-            "L3-references=%llu L3-misses=%llu L3-miss-rate=%.4f%%\n",
-            static_cast<unsigned long long>(totals.l1d_references),
-            static_cast<unsigned long long>(totals.l1d_misses),
-            pmu_ratio(totals.l1d_misses, totals.l1d_references),
-            static_cast<unsigned long long>(totals.l1i_references),
-            static_cast<unsigned long long>(totals.l1i_misses),
-            pmu_ratio(totals.l1i_misses, totals.l1i_references),
-            static_cast<unsigned long long>(totals.l2_references),
-            static_cast<unsigned long long>(totals.l2_misses),
-            pmu_ratio(totals.l2_misses, totals.l2_references),
-            static_cast<unsigned long long>(totals.l3_references),
-            static_cast<unsigned long long>(totals.l3_misses),
-            pmu_ratio(totals.l3_misses, totals.l3_references));
-}
-#endif
-
 /// Isolated market-data -> strategy -> order path for PMU attribution.
 extern "C" NTS_PROFILE_NOINLINE void process_market_signal_and_order(
     bool got_ref_data, const nts::MdMsg& ref_msg, uint64_t ref_receive_ticks, bool got_target_data,
@@ -112,57 +51,11 @@ extern "C" NTS_PROFILE_NOINLINE void process_market_signal_and_order(
     uint64_t& latest_md_receive_ticks, nts::OrderTickRing& order_sent_ticks
 #ifdef NTS_ENABLE_PMU_PROFILE
     ,
-    PmuProfileTotals& pmu_totals
+    nts::instrument::PmuProfileTotals& pmu_totals
 #endif
 ) {
 #ifdef NTS_ENABLE_PMU_PROFILE
-    static nts::instrument::PerfCounter cycles(nts::instrument::PerfEvent::CpuCycles);
-    static nts::instrument::PerfCounter instructions(nts::instrument::PerfEvent::Instructions);
-    static nts::instrument::PerfCounter cache_references(nts::instrument::PerfEvent::CacheReferences);
-    static nts::instrument::PerfCounter cache_misses(nts::instrument::PerfEvent::CacheMisses);
-    static nts::instrument::PerfCounter branches(nts::instrument::PerfEvent::Branches);
-    static nts::instrument::PerfCounter branch_misses(nts::instrument::PerfEvent::BranchMisses);
-    static nts::instrument::PerfCounter page_faults(nts::instrument::PerfEvent::PageFaults);
-    static nts::instrument::PerfCounter l1d_references(nts::instrument::PerfEvent::L1DReferences);
-    static nts::instrument::PerfCounter l1d_misses(nts::instrument::PerfEvent::L1DMisses);
-    static nts::instrument::PerfCounter l1i_references(nts::instrument::PerfEvent::L1IReferences);
-    static nts::instrument::PerfCounter l1i_misses(nts::instrument::PerfEvent::L1IMisses);
-    static nts::instrument::PerfCounter l2_references(nts::instrument::PerfEvent::L2References);
-    static nts::instrument::PerfCounter l2_misses(nts::instrument::PerfEvent::L2Misses);
-    static nts::instrument::PerfCounter l3_references(nts::instrument::PerfEvent::L3References);
-    static nts::instrument::PerfCounter l3_misses(nts::instrument::PerfEvent::L3Misses);
-
-    cycles.reset();
-    instructions.reset();
-    cache_references.reset();
-    cache_misses.reset();
-    branches.reset();
-    branch_misses.reset();
-    page_faults.reset();
-    l1d_references.reset();
-    l1d_misses.reset();
-    l1i_references.reset();
-    l1i_misses.reset();
-    l2_references.reset();
-    l2_misses.reset();
-    l3_references.reset();
-    l3_misses.reset();
-
-    cycles.enable();
-    instructions.enable();
-    cache_references.enable();
-    cache_misses.enable();
-    branches.enable();
-    branch_misses.enable();
-    page_faults.enable();
-    l1d_references.enable();
-    l1d_misses.enable();
-    l1i_references.enable();
-    l1i_misses.enable();
-    l2_references.enable();
-    l2_misses.enable();
-    l3_references.enable();
-    l3_misses.enable();
+    nts::instrument::PmuProfileScope pmu_scope(pmu_totals);
 #endif
     using nts::instrument::Hop;
 
@@ -237,41 +130,6 @@ extern "C" NTS_PROFILE_NOINLINE void process_market_signal_and_order(
             exchange.submit_order(*order);
         }
     }
-
-#ifdef NTS_ENABLE_PMU_PROFILE
-    cycles.disable();
-    instructions.disable();
-    cache_references.disable();
-    cache_misses.disable();
-    branches.disable();
-    branch_misses.disable();
-    page_faults.disable();
-    l1d_references.disable();
-    l1d_misses.disable();
-    l1i_references.disable();
-    l1i_misses.disable();
-    l2_references.disable();
-    l2_misses.disable();
-    l3_references.disable();
-    l3_misses.disable();
-
-    pmu_totals.calls++;
-    pmu_totals.cycles += cycles.read_value();
-    pmu_totals.instructions += instructions.read_value();
-    pmu_totals.cache_references += cache_references.read_value();
-    pmu_totals.cache_misses += cache_misses.read_value();
-    pmu_totals.branches += branches.read_value();
-    pmu_totals.branch_misses += branch_misses.read_value();
-    pmu_totals.page_faults += page_faults.read_value();
-    pmu_totals.l1d_references += l1d_references.read_value();
-    pmu_totals.l1d_misses += l1d_misses.read_value();
-    pmu_totals.l1i_references += l1i_references.read_value();
-    pmu_totals.l1i_misses += l1i_misses.read_value();
-    pmu_totals.l2_references += l2_references.read_value();
-    pmu_totals.l2_misses += l2_misses.read_value();
-    pmu_totals.l3_references += l3_references.read_value();
-    pmu_totals.l3_misses += l3_misses.read_value();
-#endif
 }
 
 /// Core pipeline loop.
@@ -291,7 +149,7 @@ extern "C" NTS_NOINLINE void run_pipeline(nts::MdReceiver& ref_md, nts::MdReceiv
     uint64_t latest_md_receive_ticks     = 0;
 
 #ifdef NTS_ENABLE_PMU_PROFILE
-    PmuProfileTotals pmu_totals;
+    nts::instrument::PmuProfileTotals pmu_totals;
 #endif
 
     auto process_execution = [&](const nts::ExecutionReport& exec) {
@@ -385,7 +243,7 @@ extern "C" NTS_NOINLINE void run_pipeline(nts::MdReceiver& ref_md, nts::MdReceiv
     nts::instrument::StatsCalculator::print_report(tracer);
 #endif
 #ifdef NTS_ENABLE_PMU_PROFILE
-    print_pmu_profile_totals(pmu_totals, stderr);
+    nts::instrument::print_pmu_profile_totals(pmu_totals, stderr);
 #endif
     print_trading_report(ref_md, target_md, oms, book, elapsed_s, iterations);
     print_order_tick_ring_report("order_sent_ticks ring", order_sent_ticks);
@@ -404,7 +262,7 @@ extern "C" NTS_NOINLINE void run_pipeline(nts::MdReceiver& ref_md, nts::MdReceiv
         nts::instrument::StatsCalculator::print_report(tracer, f);
 #endif
 #ifdef NTS_ENABLE_PMU_PROFILE
-        print_pmu_profile_totals(pmu_totals, f);
+        nts::instrument::print_pmu_profile_totals(pmu_totals, f);
 #endif
         print_trading_report(ref_md, target_md, oms, book, elapsed_s, iterations, f);
         print_order_tick_ring_report("order_sent_ticks ring", order_sent_ticks, f);
