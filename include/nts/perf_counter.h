@@ -13,14 +13,13 @@ enum class PerfEvent : uint8_t {
     Branches        = 4,
     BranchMisses    = 5,
     PageFaults      = 6,
-    L1DReferences   = 100,
-    L1DMisses       = 101,
-    L1IReferences   = 102,
-    L1IMisses       = 103,
-    L2References    = 104,
-    L2Misses        = 105,
-    L3References    = 106,
-    L3Misses        = 107,
+    L1DLoads        = 100,
+    L1DLoadMisses   = 101,
+    L1DStores       = 102,
+    LLCLoads        = 110,
+    LLCLoadMisses   = 111,
+    LLCStores       = 112,
+    LLCStoreMisses  = 113,
 };
 
 class PerfCounter {
@@ -52,14 +51,13 @@ struct PmuProfileTotals {
     uint64_t branches         = 0;
     uint64_t branch_misses    = 0;
     uint64_t page_faults      = 0;
-    uint64_t l1d_references   = 0;
-    uint64_t l1d_misses       = 0;
-    uint64_t l1i_references   = 0;
-    uint64_t l1i_misses       = 0;
-    uint64_t l2_references    = 0;
-    uint64_t l2_misses        = 0;
-    uint64_t l3_references    = 0;
-    uint64_t l3_misses        = 0;
+    uint64_t l1d_loads        = 0;
+    uint64_t l1d_load_misses  = 0;
+    uint64_t l1d_stores       = 0;
+    uint64_t llc_loads        = 0;
+    uint64_t llc_load_misses  = 0;
+    uint64_t llc_stores       = 0;
+    uint64_t llc_store_misses = 0;
 };
 
 class PmuProfileScope {
