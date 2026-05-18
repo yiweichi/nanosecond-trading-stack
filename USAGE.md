@@ -19,6 +19,33 @@
 
 The pipeline requires two terminals: `make gen` in one, `make run` in another.
 
+### PMU profile groups
+
+When built with `NTS_ENABLE_PMU_PROFILE=ON`, the pipeline records PMU counters around
+`process_market_signal_and_order`. Use `NTS_PMU_GROUP` to keep the active counter set
+small and reduce PMU multiplexing:
+
+| Group | Events |
+|---|---|
+| `core` | `cycles`, `instructions`, `branches`, `branch-misses`, `page-faults` |
+| `cache` | `cache-references`, `cache-misses` |
+| `l1d` | `L1-dcache-loads`, `L1-dcache-load-misses`, `L1-dcache-stores` |
+| `llc` | `LLC-loads`, `LLC-load-misses`, `LLC-stores`, `LLC-store-misses` |
+| `all` | All of the above; useful for quick inspection, but may multiplex heavily |
+
+Examples:
+
+```bash
+make profile NTS_ENABLE_PMU_PROFILE=ON
+NTS_PMU_GROUP=core taskset -c 1 ./build/nts_pipeline --port 12345 --order-port 12346 --duration 1
+NTS_PMU_GROUP=cache taskset -c 1 ./build/nts_pipeline --port 12345 --order-port 12346 --duration 1
+NTS_PMU_GROUP=l1d taskset -c 1 ./build/nts_pipeline --port 12345 --order-port 12346 --duration 1
+NTS_PMU_GROUP=llc taskset -c 1 ./build/nts_pipeline --port 12345 --order-port 12346 --duration 1
+NTS_PMU_GROUP=all taskset -c 1 ./build/nts_pipeline --port 12345 --order-port 12346 --duration 1
+```
+
+If `NTS_PMU_GROUP` is omitted, `core` is used.
+
 ## Matching Engine Benchmark
 
 | Command | Description |
